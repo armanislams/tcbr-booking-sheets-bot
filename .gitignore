@@ -1,5 +1,16 @@
-.vercel
-data/
+# Secrets — NEVER commit these
 .env
 service-account.json
-node_modules
+
+# Generated data (not needed on cloud — Render uses ephemeral storage)
+data/
+
+# Dependencies
+node_modules/
+
+# Vercel (no longer using)
+.vercel/
+
+# OS files
+.DS_Store
+Thumbs.db
