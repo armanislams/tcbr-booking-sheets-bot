@@ -1,25 +1,49 @@
 const express = require('express');
 const path    = require('path');
-const { loadHistory } = require('./snapshot');
+const { loadHistory, loadSnapshot } = require('./snapshot');
 
 const app = express();
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // API endpoint for the dashboard to fetch change history
-app.get('/api/history', (req, res) => {
-  const history = loadHistory();
+app.get('/api/history', async (req, res) => {
+  const history = await loadHistory();
   res.json(history);
 });
 
 // API endpoint for health check / last check info
-app.get('/api/status', (req, res) => {
-  const history = loadHistory();
+app.get('/api/status', async (req, res) => {
+  const history = await loadHistory();
   res.json({
     status: 'running',
     lastCheck: history[0]?.checkedAt || null,
     totalEventsLogged: history.length,
   });
+});
+
+// API endpoint for the dashboard to fetch current month's active bookings
+app.get('/api/current-bookings', async (req, res) => {
+  try {
+    const snapshot = await loadSnapshot();
+    if (!snapshot) {
+      return res.json({ headers: [], bookings: [] });
+    }
+
+    // Convert monthMap into a flat list of booking rows
+    const bookings = Object.values(snapshot.monthMap || {}).map(entry => ({
+      row: entry.row,
+      rowIndex: entry.rowIndex,
+    }));
+
+    res.json({
+      headers: snapshot.headers || [],
+      bookings,
+    });
+  } catch (err) {
+    console.error('   ❌ Failed to load current bookings:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 function startDashboard() {

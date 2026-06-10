@@ -6,7 +6,7 @@
  *   Col H   = Check-in Date  (index 7)
  *   Col I   = Check-out Date (index 8)
  *
- * A row is considered "current month" if EITHER check-in OR check-out
+ * A row is considered "current month" if the check-in date
  * falls within the current month & year.
  */
 
@@ -113,7 +113,7 @@ function buildCurrentMonthMap(rows) {
     const checkIn  = parseDate(row[CHECK_IN_COL]);
     const checkOut = parseDate(row[CHECK_OUT_COL]);
 
-    if (isCurrentMonth(checkIn) || isCurrentMonth(checkOut)) {
+    if (isCurrentMonth(checkIn)) {
       const key = rowKey(row, i);
       map[key] = { row, checkIn, checkOut, rowIndex: i };
     }

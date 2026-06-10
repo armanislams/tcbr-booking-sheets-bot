@@ -19,7 +19,7 @@ async function runCheck() {
     console.log(`   📄 Fetched ${rows.length} total rows from sheet`);
 
     // 2. Load previous snapshot
-    const previousSnapshot = loadSnapshot();
+    const previousSnapshot = await loadSnapshot();
     const isInitialRun = !previousSnapshot;
 
     // 3. Detect changes in current month
@@ -42,7 +42,7 @@ async function runCheck() {
     }
 
     // 5. Log to history for dashboard
-    appendHistory({
+    await appendHistory({
       checkedAt: now.toISOString(),
       totalRows: rows.length,
       currentMonthCount: currentMonthRows.length,
@@ -51,7 +51,7 @@ async function runCheck() {
     });
 
     // 6. Save new snapshot
-    saveSnapshot(rows, currentMonthRows);
+    await saveSnapshot(rows, currentMonthRows);
 
   } catch (err) {
     console.error('   ❌ Error during check:', err.message);
