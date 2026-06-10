@@ -1,5 +1,6 @@
 const fs   = require('fs');
 const path = require('path');
+const { rowKey } = require('./detector');
 
 const DATA_DIR     = path.join(__dirname, '..', 'data');
 const SNAPSHOT_FILE = path.join(DATA_DIR, 'snapshot.json');
@@ -34,7 +35,7 @@ function saveSnapshot(allRows, currentMonthRows) {
   };
 
   for (const entry of currentMonthRows) {
-    const key = `${(entry.row[0] || '').toString().trim()}__row${entry.rowIndex}`;
+    const key = rowKey(entry.row, entry.rowIndex);
     snapshot.monthMap[key] = {
       row: entry.row,
       rowIndex: entry.rowIndex,

@@ -35,6 +35,34 @@ function parseDate(value) {
     if (!isNaN(parsed)) return parsed;
   }
 
+  // Handle textual formats with ordinal suffixes and typos (e.g. "20th March", "2nd June", "24thJuly", "17th Marcj")
+  const dayMatch = trimmed.match(/^(\d+)/);
+  if (dayMatch) {
+    const day = parseInt(dayMatch[1], 10);
+    const rest = trimmed.toLowerCase();
+
+    let month = -1;
+    if (rest.includes('jan')) month = 0;
+    else if (rest.includes('feb')) month = 1;
+    else if (rest.includes('mar')) month = 2; // matches march, marc, marcj
+    else if (rest.includes('apr')) month = 3;
+    else if (rest.includes('may')) month = 4;
+    else if (rest.includes('jun')) month = 5;
+    else if (rest.includes('jul')) month = 6;
+    else if (rest.includes('aug')) month = 7;
+    else if (rest.includes('sep')) month = 8;
+    else if (rest.includes('oct')) month = 9;
+    else if (rest.includes('nov')) month = 10;
+    else if (rest.includes('dec')) month = 11;
+
+    if (month !== -1) {
+      const now = new Date();
+      const year = now.getFullYear();
+      const parsed = new Date(year, month, day);
+      if (!isNaN(parsed)) return parsed;
+    }
+  }
+
   return null;
 }
 
@@ -128,4 +156,4 @@ function detectChanges(rows, prevSnapshot) {
   return { newRows, modifiedRows, currentMonthRows };
 }
 
-module.exports = { detectChanges, buildCurrentMonthMap, parseDate, isCurrentMonth };
+module.exports = { detectChanges, buildCurrentMonthMap, parseDate, isCurrentMonth, rowKey };
