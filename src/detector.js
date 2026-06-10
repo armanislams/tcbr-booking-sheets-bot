@@ -86,14 +86,29 @@ function rowKey(row, rowIndex) {
 }
 
 /**
+ * Find the index of the header row in the spreadsheet.
+ * Typically the row that contains critical column identifiers like 'CODE'.
+ */
+function findHeaderRowIndex(rows) {
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const row = rows[i];
+    if (row && row.some(cell => typeof cell === 'string' && cell.trim() === 'CODE')) {
+      return i;
+    }
+  }
+  return 0; // Default to row 0 if not found
+}
+
+/**
  * Build a map of { rowKey -> { row, checkIn, checkOut, rowIndex } }
  * for all rows that belong to the current month.
  */
 function buildCurrentMonthMap(rows) {
   const map = {};
+  const headerIndex = findHeaderRowIndex(rows);
 
-  // Skip header row (index 0)
-  for (let i = 1; i < rows.length; i++) {
+  // Skip header row
+  for (let i = headerIndex + 1; i < rows.length; i++) {
     const row = rows[i];
     const checkIn  = parseDate(row[CHECK_IN_COL]);
     const checkOut = parseDate(row[CHECK_OUT_COL]);
@@ -115,7 +130,8 @@ function buildCurrentMonthMap(rows) {
  * @returns {{ newRows, modifiedRows, currentMonthRows }}
  */
 function detectChanges(rows, prevSnapshot) {
-  const headers = rows[0] || [];
+  const headerIndex = findHeaderRowIndex(rows);
+  const headers = rows[headerIndex] || [];
   const currentMap = buildCurrentMonthMap(rows);
   const currentMonthRows = Object.values(currentMap);
 
@@ -156,4 +172,4 @@ function detectChanges(rows, prevSnapshot) {
   return { newRows, modifiedRows, currentMonthRows };
 }
 
-module.exports = { detectChanges, buildCurrentMonthMap, parseDate, isCurrentMonth, rowKey };
+module.exports = { detectChanges, buildCurrentMonthMap, parseDate, isCurrentMonth, rowKey, findHeaderRowIndex };
