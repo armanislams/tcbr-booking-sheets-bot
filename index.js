@@ -20,6 +20,7 @@ async function runCheck() {
 
     // 2. Load previous snapshot
     const previousSnapshot = loadSnapshot();
+    const isInitialRun = !previousSnapshot;
 
     // 3. Detect changes in current month
     const { newRows, modifiedRows, currentMonthRows } = detectChanges(rows, previousSnapshot);
@@ -28,12 +29,16 @@ async function runCheck() {
     console.log(`   🟢 New rows: ${newRows.length}`);
     console.log(`   🟡 Modified rows: ${modifiedRows.length}`);
 
-    // 4. Send notification if there are changes
-    if (newRows.length > 0 || modifiedRows.length > 0) {
+    // 4. Send notification if there are changes (skip on first boot to prevent spam)
+    if (!isInitialRun && (newRows.length > 0 || modifiedRows.length > 0)) {
       await sendTelegramAlert({ newRows, modifiedRows, checkedAt: now });
       console.log('   ✅ Telegram notification sent!');
     } else {
-      console.log('   ✅ No changes detected.');
+      if (isInitialRun) {
+        console.log('   ℹ️  Initial run: established baseline snapshot, skipped notifications.');
+      } else {
+        console.log('   ✅ No changes detected.');
+      }
     }
 
     // 5. Log to history for dashboard
