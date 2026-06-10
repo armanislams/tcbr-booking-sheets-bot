@@ -1,0 +1,5 @@
+.vercel
+data/
+.env
+service-account.json
+node_modules

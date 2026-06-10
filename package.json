@@ -1,0 +1,17 @@
+{
+  "name": "sheets-bot",
+  "version": "1.0.0",
+  "description": "Google Sheets monitor bot with Telegram notifications and web dashboard",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "googleapis": "^140.0.1",
+    "node-cron": "^3.0.3"
+  }
+}
