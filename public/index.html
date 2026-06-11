@@ -546,6 +546,24 @@
         <span style="font-size: 0.8rem; color: var(--text-secondary);">Check-Out:</span>
         <input type="date" id="checkout-date-input" class="search-input-field" onchange="handleDateSelect()" style="padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-family: inherit; font-size: 0.85rem; outline: none; transition: border-color 0.2s;">
       </div>
+      <div id="month-filter-container" style="display: none; gap: 6px; align-items: center;">
+        <span style="font-size: 0.8rem; color: var(--text-secondary);">Month:</span>
+        <select id="month-filter-input" class="search-input-field" onchange="handleMonthSelect()" style="padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-family: inherit; font-size: 0.85rem; outline: none; transition: border-color 0.2s; cursor: pointer;">
+          <option value="">All Months</option>
+          <option value="0">January</option>
+          <option value="1">February</option>
+          <option value="2">March</option>
+          <option value="3">April</option>
+          <option value="4">May</option>
+          <option value="5">June</option>
+          <option value="6">July</option>
+          <option value="7">August</option>
+          <option value="8">September</option>
+          <option value="9">October</option>
+          <option value="10">November</option>
+          <option value="11">December</option>
+        </select>
+      </div>
       <button class="refresh-btn" onclick="clearDateFilters()" style="padding: 7px 12px; font-size: 0.8rem; border-radius: var(--radius-sm);">Clear Dates</button>
     </div>
   </div>
@@ -655,16 +673,25 @@
 
     // Show/hide category filters (only for changelog)
     const filterBar = document.getElementById('category-filters');
+    const monthFilterContainer = document.getElementById('month-filter-container');
+
     if (tabName === 'changelog') {
       filterBar.style.display = 'flex';
+      if (monthFilterContainer) monthFilterContainer.style.display = 'none';
       document.getElementById('view-title').innerHTML = '📋 Change Log';
     } else if (tabName === 'bookings') {
       filterBar.style.display = 'none';
+      if (monthFilterContainer) monthFilterContainer.style.display = 'none';
       document.getElementById('view-title').innerHTML = '📅 Current Month Bookings';
     } else {
       filterBar.style.display = 'none';
+      if (monthFilterContainer) monthFilterContainer.style.display = 'flex';
       document.getElementById('view-title').innerHTML = '🌎 All Bookings';
     }
+
+    // Reset month filter when switching tabs
+    const monthFilterInput = document.getElementById('month-filter-input');
+    if (monthFilterInput) monthFilterInput.value = '';
 
     renderContent();
   }
@@ -743,11 +770,17 @@
     renderContent();
   }
 
+  function handleMonthSelect() {
+    renderContent();
+  }
+
   function clearDateFilters() {
     const checkinEl = document.getElementById('checkin-date-input');
     const checkoutEl = document.getElementById('checkout-date-input');
+    const monthEl = document.getElementById('month-filter-input');
     if (checkinEl) checkinEl.value = '';
     if (checkoutEl) checkoutEl.value = '';
+    if (monthEl) monthEl.value = '';
     renderContent();
   }
 
@@ -759,6 +792,7 @@
     const searchQuery = document.getElementById('search-input')?.value.toLowerCase().trim() || '';
     const checkinDateVal = document.getElementById('checkin-date-input')?.value || '';
     const checkoutDateVal = document.getElementById('checkout-date-input')?.value || '';
+    const monthFilterVal = document.getElementById('month-filter-input')?.value || '';
 
     let parsedCheckInDate = null;
     if (checkinDateVal) {
@@ -853,8 +887,8 @@
       // --- Render Bookings (Current or All) ---
       let filtered = activeTab === 'bookings' ? [...currentBookings] : [...allBookings];
 
-      // Filter by search query / dates
-      if (searchQuery || parsedCheckInDate || parsedCheckOutDate) {
+      // Filter by search query / dates / month
+      if (searchQuery || parsedCheckInDate || parsedCheckOutDate || monthFilterVal !== '') {
         filtered = filtered.filter(item => {
           const rowData = item.row || [];
           const name = (rowData[3] || '').toString().toLowerCase();
@@ -880,6 +914,12 @@
             if (!checkOutMatches) return false;
           }
 
+          if (monthFilterVal !== '') {
+            const checkInDate = parseClientDate(checkInStr);
+            const monthMatches = checkInDate && checkInDate.getMonth() === parseInt(monthFilterVal, 10);
+            if (!monthMatches) return false;
+          }
+
           return true;
         });
       }
@@ -888,7 +928,7 @@
 
       if (filtered.length === 0) {
         const hasNoBookings = (activeTab === 'bookings' ? currentBookings.length : allBookings.length) === 0;
-        if (!searchQuery && !parsedCheckInDate && !parsedCheckOutDate && hasNoBookings) {
+        if (!searchQuery && !parsedCheckInDate && !parsedCheckOutDate && monthFilterVal === '' && hasNoBookings) {
           const emptyText = activeTab === 'bookings' 
             ? 'No active bookings this month' 
             : 'No bookings found in the Google Sheet';

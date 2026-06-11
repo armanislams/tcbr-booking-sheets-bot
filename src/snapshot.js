@@ -87,11 +87,16 @@ async function saveSnapshot(allRows, currentMonthRows) {
   const headerIndex = findHeaderRowIndex(allRows);
   const headers = allRows[headerIndex] || [];
 
-  // Format all data rows (excluding headers)
+  // Format all data rows (excluding headers and empty rows)
   const allRowsData = [];
   for (let i = headerIndex + 1; i < allRows.length; i++) {
+    const row = allRows[i];
+    // Skip empty/blank rows
+    if (!row || row.every(cell => !cell || cell.toString().trim() === '')) {
+      continue;
+    }
     allRowsData.push({
-      row: allRows[i],
+      row,
       rowIndex: i
     });
   }
