@@ -12,22 +12,42 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 let mongoClient = null;
 let db = null;
+let dbStatus = { connected: false, type: 'local', error: 'Database not initialized' };
+
+/**
+ * Get the current database connection status.
+ */
+function getDbStatus() {
+  return dbStatus;
+}
 
 /**
  * Connect to MongoDB if the MONGODB_URI is provided.
  */
 async function getDb() {
-  if (!process.env.MONGODB_URI) return null;
-  if (db) return db;
+  if (!process.env.MONGODB_URI) {
+    dbStatus = {
+      connected: false,
+      type: 'local',
+      error: 'MONGODB_URI environment variable is not set.'
+    };
+    return null;
+  }
+  if (db) {
+    dbStatus = { connected: true, type: 'mongodb', error: null };
+    return db;
+  }
 
   try {
     mongoClient = new MongoClient(process.env.MONGODB_URI);
     await mongoClient.connect();
     db = mongoClient.db();
     console.log('   ✅ Connected to MongoDB successfully');
+    dbStatus = { connected: true, type: 'mongodb', error: null };
     return db;
   } catch (err) {
     console.error('   ❌ Failed to connect to MongoDB:', err.message);
+    dbStatus = { connected: false, type: 'local', error: err.message };
     db = null;
     return null;
   }
@@ -155,4 +175,4 @@ async function loadHistory() {
   }
 }
 
-module.exports = { loadSnapshot, saveSnapshot, appendHistory, loadHistory };
+module.exports = { loadSnapshot, saveSnapshot, appendHistory, loadHistory, getDbStatus };

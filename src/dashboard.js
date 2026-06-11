@@ -15,10 +15,12 @@ app.get('/api/history', async (req, res) => {
 // API endpoint for health check / last check info
 app.get('/api/status', async (req, res) => {
   const history = await loadHistory();
+  const { getDbStatus } = require('./snapshot');
   res.json({
     status: 'running',
     lastCheck: history[0]?.checkedAt || null,
     totalEventsLogged: history.length,
+    dbStatus: getDbStatus(),
   });
 });
 

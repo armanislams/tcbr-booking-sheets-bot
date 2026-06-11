@@ -413,6 +413,7 @@
       <div class="status-dot" title="Bot is running"></div>
     </div>
     <div class="header-right">
+      <span id="db-status-badge" class="type-badge" style="cursor: help; text-transform: none; display: inline-flex; align-items: center; gap: 4px;" title="Checking database...">Database: —</span>
       Last check: <span id="last-check-time">—</span>
       <button class="refresh-btn" id="refresh-btn" onclick="loadData()">
         <span class="refresh-icon">↻</span> Refresh
@@ -527,6 +528,28 @@
         ? new Date(status.lastCheck).toLocaleString()
         : 'Never';
       document.getElementById('last-check-time').textContent = lastCheck;
+
+      // Update Database Status Badge
+      const dbBadge = document.getElementById('db-status-badge');
+      if (dbBadge && status.dbStatus) {
+        if (status.dbStatus.connected) {
+          dbBadge.style.backgroundColor = 'var(--green-bg)';
+          dbBadge.style.color = 'var(--green)';
+          dbBadge.style.borderColor = 'rgba(63,185,80,0.3)';
+          dbBadge.style.borderStyle = 'solid';
+          dbBadge.style.borderWidth = '1px';
+          dbBadge.textContent = '🔌 DB: Connected';
+          dbBadge.title = 'Successfully connected to MongoDB. Data is persistent across restarts.';
+        } else {
+          dbBadge.style.backgroundColor = 'var(--red-bg)';
+          dbBadge.style.color = 'var(--red)';
+          dbBadge.style.borderColor = 'rgba(248,81,73,0.3)';
+          dbBadge.style.borderStyle = 'solid';
+          dbBadge.style.borderWidth = '1px';
+          dbBadge.textContent = '⚠️ DB: Local Fallback';
+          dbBadge.title = 'Using ephemeral local fallback (WARNING: Data will be lost when Render restarts!).\nError: ' + (status.dbStatus.error || 'Unknown error');
+        }
+      }
 
     } catch (err) {
       console.error('Failed to load data:', err);
