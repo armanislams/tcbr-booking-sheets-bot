@@ -33,6 +33,22 @@ function formatRow(row, headers) {
       return `  • <b>${escapeHtml(header)}:</b> ${escapeHtml(val)}`;
     })
     .filter(Boolean)
+}
+
+/**
+ * Format a modified row's data, appending a 🟡 marker to changed columns.
+ */
+function formatModifiedRow(row, headers, changes) {
+  const changedColumns = new Set(changes.map(c => c.column));
+  return headers
+    .map((header, i) => {
+      const val = (row[i] || '').toString().trim();
+      if (!val) return null;
+      const isChanged = changedColumns.has(header);
+      const marker = isChanged ? ' 🟡 (changed)' : '';
+      return `  • <b>${escapeHtml(header)}${marker}:</b> ${escapeHtml(val)}`;
+    })
+    .filter(Boolean)
     .join('\n');
 }
 
@@ -92,6 +108,7 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
   if (modifiedRows.length > 0) {
     parts.push(`\n\n🟡 <b>${modifiedRows.length} Modified Row(s) This Month:</b>`);
     for (const entry of modifiedRows.slice(0, 10)) {
+      const fullRowText = formatModifiedRow(entry.row, entry.headers, entry.changes);
       const changesText = entry.changes
         .map(c =>
           `  • <b>${escapeHtml(c.column)}:</b>\n` +
@@ -99,7 +116,11 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
           `    ✅ Now: ${escapeHtml(c.after)  || '(empty)'}`
         )
         .join('\n');
-      parts.push(`\n━━━━━━━━━━━━━━━\nRow: <i>${escapeHtml(entry.row[0] || entry.key)}</i>\n${changesText}`);
+      parts.push(
+        `\n━━━━━━━━━━━━━━━\n` +
+        `<b>📋 Full Row Data:</b>\n${fullRowText}\n\n` +
+        `<b>⚡ What Changed:</b>\n${changesText}`
+      );
     }
     if (modifiedRows.length > 10) {
       parts.push(`\n  ... and ${modifiedRows.length - 10} more modified rows.`);

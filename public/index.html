@@ -1072,7 +1072,7 @@
     } else {
       // Show only changed cells with before/after
       const changes = (row.changes || []);
-      const rows = changes.map(c => `
+      const changesRows = changes.map(c => `
         <tr>
           <td style="color:var(--text-secondary);width:30%">${escapeHtml(c.column)}</td>
           <td>
@@ -1082,10 +1082,27 @@
           </td>
         </tr>`).join('');
 
+      // Show full row data
+      const fullRows = headers
+        .map((h, i) => {
+          const val = (rowData[i] || '').toString().trim();
+          if (!val) return '';
+          return `<tr><td style="color:var(--text-secondary);width:35%">${escapeHtml(h)}</td><td>${escapeHtml(val)}</td></tr>`;
+        })
+        .filter(Boolean)
+        .join('');
+
       bodyHtml = `
-        <table class="row-table" style="margin-top:12px">
+        <div style="margin-top: 12px; font-weight: 600; font-size: 0.85rem; color: var(--yellow);">⚡ Changes:</div>
+        <table class="row-table" style="margin-top:6px; margin-bottom: 16px;">
           <thead><tr><th>Column</th><th>Change</th></tr></thead>
-          <tbody>${rows}</tbody>
+          <tbody>${changesRows}</tbody>
+        </table>
+        
+        <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">📋 Full Row Data:</div>
+        <table class="row-table" style="margin-top:6px;">
+          <thead><tr><th>Column</th><th>Value</th></tr></thead>
+          <tbody>${fullRows || '<tr><td colspan="2" style="color:var(--text-muted)">No data</td></tr>'}</tbody>
         </table>`;
     }
 
