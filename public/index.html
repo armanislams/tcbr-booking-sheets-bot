@@ -395,10 +395,77 @@
     }
 
     /* ── Responsive ── */
-    @media (max-width: 640px) {
-      .main { padding: 20px 16px; }
-      .header { padding: 0 16px; }
-      .stats-grid { grid-template-columns: 1fr 1fr; }
+    @media (max-width: 768px) {
+      .main { padding: 16px 12px; }
+      .header { padding: 0 12px; }
+      .header-inner {
+        flex-direction: column;
+        height: auto;
+        padding: 12px 0;
+        gap: 8px;
+        align-items: flex-start;
+      }
+      .header-right {
+        width: 100%;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .search-bar {
+        flex-direction: column;
+        align-items: stretch !important;
+        padding: 12px 14px !important;
+      }
+      
+      .search-bar > div:first-child {
+        min-width: 100% !important;
+      }
+      
+      .search-bar > div:last-child {
+        min-width: 100% !important;
+        justify-content: space-between !important;
+        gap: 8px !important;
+      }
+      
+      .search-bar input[type="date"] {
+        flex-grow: 1;
+        width: 100%;
+      }
+      
+      .card-header {
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 10px;
+        padding: 12px 14px;
+      }
+      
+      .card-left {
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      
+      .card-header > div:last-child {
+        width: 100%;
+        justify-content: space-between;
+        border-top: 1px solid var(--border-light);
+        padding-top: 8px;
+      }
+      
+      .tab-bar {
+        overflow-x: auto;
+        white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
+      }
+      
+      .tab-btn {
+        padding: 8px 12px;
+        font-size: 0.85rem;
+      }
     }
   </style>
 </head>
@@ -453,6 +520,7 @@
   <div class="tab-bar">
     <button class="tab-btn active" id="tab-changelog" onclick="setTab('changelog')">📋 Change Log</button>
     <button class="tab-btn"        id="tab-bookings"  onclick="setTab('bookings')">📅 Current Bookings</button>
+    <button class="tab-btn"        id="tab-allbookings" onclick="setTab('allbookings')">🌎 All Bookings</button>
   </div>
 
   <!-- Category Filters (only for Change Log) -->
@@ -498,10 +566,11 @@
 
 <script>
   let allHistory = [];
+  let currentBookings = [];
   let allBookings = [];
   let bookingsHeaders = [];
   let activeFilter = 'all';
-  let activeTab = 'changelog'; // 'changelog' or 'bookings'
+  let activeTab = 'changelog'; // 'changelog', 'bookings', or 'allbookings'
 
   // ── Load data from API ──────────────────────────────────────────────────────
   async function loadData() {
@@ -509,17 +578,21 @@
     btn.classList.add('spinning');
 
     try {
-      const [historyRes, statusRes, bookingsRes] = await Promise.all([
+      const [historyRes, statusRes, currentBookingsRes, allBookingsRes] = await Promise.all([
         fetch('/api/history'),
         fetch('/api/status'),
         fetch('/api/current-bookings'),
+        fetch('/api/all-bookings'),
       ]);
       allHistory = await historyRes.json();
       const status = await statusRes.json();
       
-      const bookingsData = await bookingsRes.json();
-      allBookings = bookingsData.bookings || [];
-      bookingsHeaders = bookingsData.headers || [];
+      const currentBookingsData = await currentBookingsRes.json();
+      currentBookings = currentBookingsData.bookings || [];
+      bookingsHeaders = currentBookingsData.headers || [];
+
+      const allBookingsData = await allBookingsRes.json();
+      allBookings = allBookingsData.bookings || [];
 
       updateStats();
       renderContent();
@@ -585,9 +658,12 @@
     if (tabName === 'changelog') {
       filterBar.style.display = 'flex';
       document.getElementById('view-title').innerHTML = '📋 Change Log';
-    } else {
+    } else if (tabName === 'bookings') {
       filterBar.style.display = 'none';
       document.getElementById('view-title').innerHTML = '📅 Current Month Bookings';
+    } else {
+      filterBar.style.display = 'none';
+      document.getElementById('view-title').innerHTML = '🌎 All Bookings';
     }
 
     renderContent();
@@ -774,8 +850,8 @@
       container.innerHTML = filtered.map((item, idx) => buildCard(item, idx)).join('');
 
     } else {
-      // --- Render Current Bookings ---
-      let filtered = [...allBookings];
+      // --- Render Bookings (Current or All) ---
+      let filtered = activeTab === 'bookings' ? [...currentBookings] : [...allBookings];
 
       // Filter by search query / dates
       if (searchQuery || parsedCheckInDate || parsedCheckOutDate) {
@@ -811,12 +887,19 @@
       badgeCountEl.textContent = `${filtered.length} booking${filtered.length !== 1 ? 's' : ''}`;
 
       if (filtered.length === 0) {
-        if (!searchQuery && !parsedCheckInDate && !parsedCheckOutDate && allBookings.length === 0) {
+        const hasNoBookings = (activeTab === 'bookings' ? currentBookings.length : allBookings.length) === 0;
+        if (!searchQuery && !parsedCheckInDate && !parsedCheckOutDate && hasNoBookings) {
+          const emptyText = activeTab === 'bookings' 
+            ? 'No active bookings this month' 
+            : 'No bookings found in the Google Sheet';
+          const emptyDesc = activeTab === 'bookings'
+            ? 'Bookings matching the current month will automatically load here.'
+            : 'Check your Google Sheet data and ensure the service account has read access.';
           container.innerHTML = `
             <div class="empty-state">
               <div class="icon">📅</div>
-              <h3>No active bookings this month</h3>
-              <p>Bookings matching the current month will automatically load here.</p>
+              <h3>${emptyText}</h3>
+              <p>${emptyDesc}</p>
             </div>`;
         } else {
           container.innerHTML = `

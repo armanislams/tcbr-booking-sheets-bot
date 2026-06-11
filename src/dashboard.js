@@ -48,6 +48,24 @@ app.get('/api/current-bookings', async (req, res) => {
   }
 });
 
+// API endpoint for the dashboard to fetch all bookings from Google Sheet snapshot
+app.get('/api/all-bookings', async (req, res) => {
+  try {
+    const snapshot = await loadSnapshot();
+    if (!snapshot) {
+      return res.json({ headers: [], bookings: [] });
+    }
+
+    res.json({
+      headers: snapshot.headers || [],
+      bookings: snapshot.allRows || [],
+    });
+  } catch (err) {
+    console.error('   ❌ Failed to load all bookings:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 function startDashboard() {
   const port = parseInt(process.env.DASHBOARD_PORT || '3000', 10);
   app.listen(port, () => {

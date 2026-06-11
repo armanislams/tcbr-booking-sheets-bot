@@ -86,11 +86,22 @@ async function loadSnapshot() {
 async function saveSnapshot(allRows, currentMonthRows) {
   const headerIndex = findHeaderRowIndex(allRows);
   const headers = allRows[headerIndex] || [];
+
+  // Format all data rows (excluding headers)
+  const allRowsData = [];
+  for (let i = headerIndex + 1; i < allRows.length; i++) {
+    allRowsData.push({
+      row: allRows[i],
+      rowIndex: i
+    });
+  }
+
   const snapshot = {
     savedAt: new Date().toISOString(),
     totalRows: allRows.length,
     headers, // Keep the headers saved in snapshot for current bookings endpoint
     monthMap: {},
+    allRows: allRowsData, // Save all rows data for the "All Bookings" tab
   };
 
   for (const entry of currentMonthRows) {

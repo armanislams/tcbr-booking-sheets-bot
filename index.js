@@ -69,9 +69,10 @@ async function runCheck() {
       checkedAt: now.toISOString(),
       totalRows: rows.length,
       currentMonthCount: currentMonthRows.length,
-      newRows: newRows.map(r => ({ row: r.row, headers: r.headers, rowIndex: r.rowIndex })),
-      modifiedRows: modifiedRows.map(r => ({ row: r.row, headers: r.headers, rowIndex: r.rowIndex, changes: r.changes })),
+      newRows: isInitialRun ? [] : newRows.map(r => ({ row: r.row, headers: r.headers, rowIndex: r.rowIndex })),
+      modifiedRows: isInitialRun ? [] : modifiedRows.map(r => ({ row: r.row, headers: r.headers, rowIndex: r.rowIndex, changes: r.changes })),
       offlineInfo,
+      note: isInitialRun ? 'Bot initialized. Established baseline snapshot.' : undefined
     });
 
     // 6. Save new snapshot
