@@ -14,6 +14,13 @@ let mongoClient = null;
 let db = null;
 let dbStatus = { connected: false, type: 'local', error: 'Database not initialized' };
 
+// In-memory cache variables
+let cachedSnapshot = null;
+let lastSnapshotLoadTime = 0;
+let cachedHistory = null;
+let lastHistoryLoadTime = 0;
+const CACHE_TTL = 30000; // Cache for 30 seconds
+
 /**
  * Get the current database connection status.
  */
@@ -58,12 +65,21 @@ async function getDb() {
  * Returns null if no snapshot exists yet.
  */
 async function loadSnapshot() {
+  const now = Date.now();
+  // Serve from cache if still valid
+  if (cachedSnapshot && (now - lastSnapshotLoadTime < CACHE_TTL)) {
+    return cachedSnapshot;
+  }
+
   const db = await getDb();
   if (db) {
     try {
       const collection = db.collection('snapshots');
       const doc = await collection.findOne({ type: 'current_baseline' });
-      return doc ? doc.data : null;
+      
+      cachedSnapshot = doc ? doc.data : null;
+      lastSnapshotLoadTime = now;
+      return cachedSnapshot;
     } catch (err) {
       console.error('   ❌ MongoDB loadSnapshot error:', err.message);
       return null;
@@ -72,7 +88,10 @@ async function loadSnapshot() {
 
   if (!fs.existsSync(SNAPSHOT_FILE)) return null;
   try {
-    return JSON.parse(fs.readFileSync(SNAPSHOT_FILE, 'utf-8'));
+    const data = JSON.parse(fs.readFileSync(SNAPSHOT_FILE, 'utf-8'));
+    cachedSnapshot = data;
+    lastSnapshotLoadTime = now;
+    return data;
   } catch {
     return null;
   }
@@ -117,6 +136,10 @@ async function saveSnapshot(allRows, currentMonthRows) {
     };
   }
 
+  // Update in-memory cache immediately
+  cachedSnapshot = snapshot;
+  lastSnapshotLoadTime = Date.now();
+
   const db = await getDb();
   if (db) {
     try {
@@ -139,6 +162,10 @@ async function saveSnapshot(allRows, currentMonthRows) {
  * Append a change event to the history log (used by the dashboard).
  */
 async function appendHistory(event) {
+  // Invalidate history cache to fetch fresh data on next reload
+  cachedHistory = null;
+  lastHistoryLoadTime = 0;
+
   const db = await getDb();
   if (db) {
     try {
@@ -167,16 +194,25 @@ async function appendHistory(event) {
  * Load change history for the dashboard.
  */
 async function loadHistory() {
+  const now = Date.now();
+  // Serve from cache if still valid
+  if (cachedHistory && (now - lastHistoryLoadTime < CACHE_TTL)) {
+    return cachedHistory;
+  }
+
   const db = await getDb();
   if (db) {
     try {
       const collection = db.collection('history');
       const docs = await collection.find({}).sort({ checkedAt: -1 }).limit(500).toArray();
-      // Remove mongo _id before sending to frontend if needed
-      return docs.map(doc => {
+      
+      const mapped = docs.map(doc => {
         const { _id, ...rest } = doc;
         return rest;
       });
+      cachedHistory = mapped;
+      lastHistoryLoadTime = now;
+      return mapped;
     } catch (err) {
       console.error('   ❌ MongoDB loadHistory error:', err.message);
       return [];
@@ -185,7 +221,10 @@ async function loadHistory() {
 
   if (!fs.existsSync(HISTORY_FILE)) return [];
   try {
-    return JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf-8'));
+    const data = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf-8'));
+    cachedHistory = data;
+    lastHistoryLoadTime = now;
+    return data;
   } catch {
     return [];
   }

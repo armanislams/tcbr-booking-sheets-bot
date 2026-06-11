@@ -589,6 +589,7 @@
   let bookingsHeaders = [];
   let activeFilter = 'all';
   let activeTab = 'changelog'; // 'changelog', 'bookings', or 'allbookings'
+  let displayLimit = 50; // Client-side pagination limit for rendering speed
 
   // ── Load data from API ──────────────────────────────────────────────────────
   async function loadData() {
@@ -689,9 +690,10 @@
       document.getElementById('view-title').innerHTML = '🌎 All Bookings';
     }
 
-    // Reset month filter when switching tabs
+    // Reset month filter and display limit when switching tabs
     const monthFilterInput = document.getElementById('month-filter-input');
     if (monthFilterInput) monthFilterInput.value = '';
+    displayLimit = 50;
 
     renderContent();
   }
@@ -762,8 +764,12 @@
            d1.getDate() === d2.getDate();
   }
 
+  let searchTimeout = null;
   function handleSearch() {
-    renderContent();
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      renderContent();
+    }, 200); // 200ms debounce to prevent freezing while typing
   }
 
   function handleDateSelect() {
@@ -781,6 +787,12 @@
     if (checkinEl) checkinEl.value = '';
     if (checkoutEl) checkoutEl.value = '';
     if (monthEl) monthEl.value = '';
+    displayLimit = 50; // Reset pagination limit
+    renderContent();
+  }
+
+  function loadMoreBookings() {
+    displayLimit += 100;
     renderContent();
   }
 
@@ -952,7 +964,18 @@
         return;
       }
 
-      container.innerHTML = filtered.map((booking, idx) => buildBookingCard(booking, idx)).join('');
+      const sliced = filtered.slice(0, displayLimit);
+      let html = sliced.map((booking, idx) => buildBookingCard(booking, idx)).join('');
+
+      if (filtered.length > displayLimit) {
+        html += `
+          <div style="text-align: center; margin-top: 24px; margin-bottom: 24px;">
+            <button class="refresh-btn" onclick="loadMoreBookings()" style="padding: 10px 24px; font-size: 0.88rem; border-radius: var(--radius-sm); margin: 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+              ➕ Load More Bookings (${filtered.length - displayLimit} remaining)
+            </button>
+          </div>`;
+      }
+      container.innerHTML = html;
     }
   }
 
