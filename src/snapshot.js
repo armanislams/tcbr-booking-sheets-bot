@@ -19,7 +19,7 @@ let cachedSnapshot = null;
 let lastSnapshotLoadTime = 0;
 let cachedHistory = null;
 let lastHistoryLoadTime = 0;
-const CACHE_TTL = 30000; // Cache for 30 seconds
+const CACHE_TTL = 600000; // Cache for 10 minutes (10 * 60 * 1000 ms)
 
 /**
  * Get the current database connection status.
