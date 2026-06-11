@@ -46,7 +46,7 @@ function escapeHtml(str) {
 /**
  * Build and send a Telegram alert summarizing detected changes.
  */
-async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null, checkedAt }) {
+async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null, checkedAt, offlineInfo }) {
   const now = checkedAt || new Date();
   const monthName = now.toLocaleString('default', { month: 'long', year: 'numeric' });
   const timestamp = now.toLocaleString();
@@ -63,7 +63,13 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
 
   const parts = [];
 
+  let offlineHeader = '';
+  if (offlineInfo && offlineInfo.wasOffline) {
+    offlineHeader = `🔌 <b>Bot Back Online</b> (Offline for: <code>${escapeHtml(offlineInfo.duration)}</code>)\n`;
+  }
+
   parts.push(
+    (offlineHeader ? offlineHeader + '\n' : '') +
     `📊 <b>Sheets Monitor — ${escapeHtml(monthName)}</b>\n` +
     `🕐 Checked at: ${timestamp}\n`
   );

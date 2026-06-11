@@ -8,6 +8,8 @@ const { loadSnapshot, saveSnapshot, appendHistory } = require('./src/snapshot');
 
 console.log('🤖 Sheets Monitor Bot starting...');
 
+let isBoot = true;
+
 // ─── Run check job ──────────────────────────────────────────────────────────
 async function runCheck() {
   const now = new Date();
@@ -22,6 +24,27 @@ async function runCheck() {
     const previousSnapshot = await loadSnapshot();
     const isInitialRun = !previousSnapshot;
 
+    let offlineInfo = null;
+    if (isBoot && previousSnapshot && previousSnapshot.savedAt) {
+      const lastCheckTime = new Date(previousSnapshot.savedAt);
+      const diffMs = now - lastCheckTime;
+      const diffMins = Math.floor(diffMs / (1000 * 60));
+
+      // If the bot has been inactive/offline for more than 10 minutes
+      if (diffMins >= 10) {
+        const hours = Math.floor(diffMins / 60);
+        const mins = diffMins % 60;
+        const durationText = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+
+        offlineInfo = {
+          wasOffline: true,
+          duration: durationText,
+          lastActive: lastCheckTime.toLocaleString()
+        };
+        console.log(`   ℹ️  Bot is back online! Was offline/inactive for ${durationText} (Last check was at ${offlineInfo.lastActive})`);
+      }
+    }
+
     // 3. Detect changes in current month
     const { newRows, modifiedRows, currentMonthRows } = detectChanges(rows, previousSnapshot);
 
@@ -31,7 +54,7 @@ async function runCheck() {
 
     // 4. Send notification if there are changes (skip on first boot to prevent spam)
     if (!isInitialRun && (newRows.length > 0 || modifiedRows.length > 0)) {
-      await sendTelegramAlert({ newRows, modifiedRows, checkedAt: now });
+      await sendTelegramAlert({ newRows, modifiedRows, checkedAt: now, offlineInfo });
       console.log('   ✅ Telegram notification sent!');
     } else {
       if (isInitialRun) {
@@ -48,6 +71,7 @@ async function runCheck() {
       currentMonthCount: currentMonthRows.length,
       newRows: newRows.map(r => ({ row: r.row, headers: r.headers, rowIndex: r.rowIndex })),
       modifiedRows: modifiedRows.map(r => ({ row: r.row, headers: r.headers, rowIndex: r.rowIndex, changes: r.changes })),
+      offlineInfo,
     });
 
     // 6. Save new snapshot
@@ -59,6 +83,8 @@ async function runCheck() {
     try {
       await sendTelegramAlert({ error: err.message, checkedAt: now });
     } catch (_) {}
+  } finally {
+    isBoot = false;
   }
 }
 
