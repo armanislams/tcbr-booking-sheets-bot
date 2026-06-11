@@ -466,33 +466,42 @@
         padding: 8px 12px;
         font-size: 0.85rem;
       }
+
+      .scroll-to-top {
+        bottom: 20px;
+        right: 20px;
+        width: 48px;
+        height: 48px;
+        font-size: 1.3rem;
+      }
+    }
+
     /* ── Scroll to Top Button ── */
     .scroll-to-top {
       position: fixed;
-      bottom: 24px;
-      right: 24px;
-      width: 44px;
-      height: 44px;
+      bottom: 32px;
+      right: 32px;
+      width: 56px;
+      height: 56px;
       border-radius: 50%;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      color: var(--text-primary);
-      font-size: 1.2rem;
+      background: var(--accent);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+      font-size: 1.6rem;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 12px var(--accent-glow);
       opacity: 0;
       visibility: hidden;
-      transition: all 0.3s ease;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       z-index: 999;
     }
     .scroll-to-top:hover {
-      border-color: var(--accent);
-      color: var(--accent);
-      transform: translateY(-3px);
-      box-shadow: 0 6px 16px var(--accent-glow);
+      background: #4791db;
+      transform: translateY(-5px) scale(1.05);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 20px var(--accent);
     }
     .scroll-to-top.visible {
       opacity: 1;
