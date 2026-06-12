@@ -233,10 +233,12 @@ async function loadHistory() {
 /**
  * Acknowledge a change event by its ID.
  */
-async function acknowledgeEvent(eventId, username) {
+async function acknowledgeEvent(eventId, username, category = 'reception') {
   // Clear cache to reflect updates
   cachedHistory = null;
   lastHistoryLoadTime = 0;
+
+  const prefix = category === 'dive_center' ? 'acknowledgedDiveCenter' : 'acknowledgedReception';
 
   const db = await getDb();
   if (db) {
@@ -246,9 +248,9 @@ async function acknowledgeEvent(eventId, username) {
         { id: eventId },
         { 
           $set: { 
-            acknowledged: true, 
-            acknowledgedBy: username, 
-            acknowledgedAt: new Date().toISOString() 
+            [`${prefix}`]: true, 
+            [`${prefix}By`]: username, 
+            [`${prefix}At`]: new Date().toISOString() 
           } 
         }
       );
@@ -264,9 +266,9 @@ async function acknowledgeEvent(eventId, username) {
     let history = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf-8'));
     const idx = history.findIndex(item => item.id === eventId);
     if (idx !== -1) {
-      history[idx].acknowledged = true;
-      history[idx].acknowledgedBy = username;
-      history[idx].acknowledgedAt = new Date().toISOString();
+      history[idx][`${prefix}`] = true;
+      history[idx][`${prefix}By`] = username;
+      history[idx][`${prefix}At`] = new Date().toISOString();
       fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf-8');
       return true;
     }

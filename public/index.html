@@ -694,18 +694,19 @@
   }
 
   // ── Acknowledge card from dashboard ──
-  async function acknowledgeCard(eventId, buttonEl, event) {
+  async function acknowledgeCard(eventId, category, buttonEl, event) {
     if (event) event.stopPropagation();
     if (!eventId) return;
     
     buttonEl.disabled = true;
+    const originalText = buttonEl.textContent;
     buttonEl.textContent = 'Acknowledging...';
     
     try {
       const res = await fetch('/api/history/acknowledge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: eventId, user: 'Dashboard User' })
+        body: JSON.stringify({ id: eventId, user: 'Dashboard User', category })
       });
       
       if (res.ok) {
@@ -713,13 +714,13 @@
       } else {
         showToast('❌ Failed to acknowledge event.');
         buttonEl.disabled = false;
-        buttonEl.textContent = 'Acknowledge';
+        buttonEl.textContent = originalText;
       }
     } catch (err) {
       console.error(err);
       showToast('❌ Error connecting to server.');
       buttonEl.disabled = false;
-      buttonEl.textContent = 'Acknowledge';
+      buttonEl.textContent = originalText;
     }
   }
 
@@ -994,9 +995,12 @@
             row, 
             checkedAt: event.checkedAt,
             eventId: event.id,
-            acknowledged: event.acknowledged || false,
-            acknowledgedBy: event.acknowledgedBy || null,
-            acknowledgedAt: event.acknowledgedAt || null
+            acknowledgedReception: event.acknowledgedReception || false,
+            acknowledgedReceptionBy: event.acknowledgedReceptionBy || null,
+            acknowledgedReceptionAt: event.acknowledgedReceptionAt || null,
+            acknowledgedDiveCenter: event.acknowledgedDiveCenter || false,
+            acknowledgedDiveCenterBy: event.acknowledgedDiveCenterBy || null,
+            acknowledgedDiveCenterAt: event.acknowledgedDiveCenterAt || null
           });
         }
         for (const row of (event.modifiedRows || [])) {
@@ -1005,9 +1009,12 @@
             row, 
             checkedAt: event.checkedAt,
             eventId: event.id,
-            acknowledged: event.acknowledged || false,
-            acknowledgedBy: event.acknowledgedBy || null,
-            acknowledgedAt: event.acknowledgedAt || null
+            acknowledgedReception: event.acknowledgedReception || false,
+            acknowledgedReceptionBy: event.acknowledgedReceptionBy || null,
+            acknowledgedReceptionAt: event.acknowledgedReceptionAt || null,
+            acknowledgedDiveCenter: event.acknowledgedDiveCenter || false,
+            acknowledgedDiveCenterBy: event.acknowledgedDiveCenterBy || null,
+            acknowledgedDiveCenterAt: event.acknowledgedDiveCenterAt || null
           });
         }
       }
@@ -1270,21 +1277,45 @@
 
     let ackHtml = '';
     if (item.type !== 'error') {
-      if (item.acknowledged) {
-        ackHtml = `
-          <div class="ack-section" style="border-top: 1px dashed var(--border); margin-top: 16px; padding-top: 4px;">
-            <span class="ack-badge">
-              ✅ Acknowledged by ${escapeHtml(item.acknowledgedBy)} ${item.acknowledgedAt ? `at ${new Date(item.acknowledgedAt).toLocaleString()}` : ''}
-            </span>
-          </div>`;
+      const ackRec = item.acknowledgedReception;
+      const ackRecBy = item.acknowledgedReceptionBy;
+      const ackRecAt = item.acknowledgedReceptionAt;
+
+      const ackDiv = item.acknowledgedDiveCenter;
+      const ackDivBy = item.acknowledgedDiveCenterBy;
+      const ackDivAt = item.acknowledgedDiveCenterAt;
+
+      let recPart = '';
+      if (ackRec) {
+        recPart = `
+          <span class="ack-badge">
+            🛎 Reception: Acknowledged by ${escapeHtml(ackRecBy)} ${ackRecAt ? `at ${new Date(ackRecAt).toLocaleTimeString()}` : ''}
+          </span>`;
       } else if (item.eventId) {
-        ackHtml = `
-          <div class="ack-section" style="border-top: 1px dashed var(--border); margin-top: 16px; padding-top: 4px;">
-            <button class="ack-btn" onclick="acknowledgeCard('${item.eventId}', this, event)">
-              ✅ Acknowledge Alert
-            </button>
-          </div>`;
+        recPart = `
+          <button class="ack-btn" onclick="acknowledgeCard('${item.eventId}', 'reception', this, event)">
+            🛎 Acknowledge Reception
+          </button>`;
       }
+
+      let divPart = '';
+      if (ackDiv) {
+        divPart = `
+          <span class="ack-badge" style="background:var(--accent-glow);color:var(--accent);border-color:rgba(88,166,255,0.3)">
+            🤿 Dive Center: Acknowledged by ${escapeHtml(ackDivBy)} ${ackDivAt ? `at ${new Date(ackDivAt).toLocaleTimeString()}` : ''}
+          </span>`;
+      } else if (item.eventId) {
+        divPart = `
+          <button class="ack-btn" style="background:var(--accent-glow);color:var(--accent);border-color:rgba(88,166,255,0.3)" onclick="acknowledgeCard('${item.eventId}', 'dive_center', this, event)">
+            🤿 Acknowledge Dive Center
+          </button>`;
+      }
+
+      ackHtml = `
+        <div class="ack-section" style="border-top: 1px dashed var(--border); margin-top: 16px; padding-top: 4px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          ${recPart}
+          ${divPart}
+        </div>`;
     }
 
     return `

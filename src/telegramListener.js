@@ -119,15 +119,32 @@ async function handleTelegramUpdate(update) {
     const message = callbackQuery.message;
     const callbackQueryId = callbackQuery.id;
 
-    if (data.startsWith('ack:')) {
-      const eventId = data.substring(4);
+    if (data === 'noop_rec' || data === 'noop_div') {
+      try {
+        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            callback_query_id: callbackQueryId,
+            text: 'This alert has already been acknowledged.'
+          })
+        });
+      } catch (err) {}
+      return;
+    }
+
+    if (data.startsWith('ack_rec:') || data.startsWith('ack_div:')) {
+      const isRec = data.startsWith('ack_rec:');
+      const category = isRec ? 'reception' : 'dive_center';
+      const catLabel = isRec ? 'Reception' : 'Dive Center';
+      const eventId = data.substring(8);
       
       const username = callbackQuery.from.username
         ? `@${callbackQuery.from.username}`
         : `${callbackQuery.from.first_name} ${callbackQuery.from.last_name || ''}`.trim();
 
-      console.log(`💬 Received Acknowledge click from Telegram user ${username} for event ${eventId}`);
-      const success = await acknowledgeEvent(eventId, username);
+      console.log(`💬 Received Acknowledge ${category} click from Telegram user ${username} for event ${eventId}`);
+      const success = await acknowledgeEvent(eventId, username, category);
 
       // Answer Callback Query so the Telegram UI stops loading
       try {
@@ -136,28 +153,57 @@ async function handleTelegramUpdate(update) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             callback_query_id: callbackQueryId,
-            text: success ? 'Alert Acknowledged! ✅' : 'Already Acknowledged or Event Not Found'
+            text: success ? `${catLabel} Acknowledged! ✅` : 'Already Acknowledged or Event Not Found'
           })
         });
       } catch (err) {}
 
       if (success && message) {
-        // Edit the original message to reflect acknowledgement and remove the button
-        const newText = message.text + `\n\n✅ <b>Acknowledged by ${username}</b>`;
+        // Fetch the updated event to see both fields
+        const history = await loadHistory();
+        const eventObj = history.find(item => item.id === eventId) || {};
+
+        // Build the new reply markup
+        const row = [];
+        if (eventObj.acknowledgedReception) {
+          row.push({
+            text: `✅ Reception (${eventObj.acknowledgedReceptionBy})`,
+            callback_data: 'noop_rec'
+          });
+        } else {
+          row.push({
+            text: '🛎 Reception',
+            callback_data: `ack_rec:${eventId}`
+          });
+        }
+
+        if (eventObj.acknowledgedDiveCenter) {
+          row.push({
+            text: `✅ Dive Center (${eventObj.acknowledgedDiveCenterBy})`,
+            callback_data: 'noop_div'
+          });
+        } else {
+          row.push({
+            text: '🤿 Dive Center',
+            callback_data: `ack_div:${eventId}`
+          });
+        }
+
+        const replyMarkup = { inline_keyboard: [row] };
+
+        // Edit the message reply markup (retains original HTML text format!)
         try {
-          await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`, {
+          await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageReplyMarkup`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: message.chat.id,
               message_id: message.message_id,
-              text: newText,
-              parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [] }
+              reply_markup: replyMarkup
             })
           });
         } catch (err) {
-          console.error('   ❌ Failed to edit Telegram message text:', err.message);
+          console.error('   ❌ Failed to edit Telegram message reply markup:', err.message);
         }
       }
     }

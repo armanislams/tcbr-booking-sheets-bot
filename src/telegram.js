@@ -146,13 +146,17 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
 
   const fullMessage = parts.join('');
 
-  // Create acknowledgement button for Telegram changes
+  // Create acknowledgement buttons for Telegram changes (Reception and Dive Center)
   const replyMarkup = eventId ? {
     inline_keyboard: [
       [
         {
-          text: '✅ Acknowledge',
-          callback_data: `ack:${eventId}`
+          text: '🛎 Reception',
+          callback_data: `ack_rec:${eventId}`
+        },
+        {
+          text: '🤿 Dive Center',
+          callback_data: `ack_div:${eventId}`
         }
       ]
     ]

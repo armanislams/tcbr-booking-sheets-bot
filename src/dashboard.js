@@ -87,12 +87,12 @@ app.post('/api/check', async (req, res) => {
 // API endpoint to acknowledge an event from the dashboard
 app.post('/api/history/acknowledge', async (req, res) => {
   try {
-    const { id, user } = req.body;
+    const { id, user, category } = req.body;
     if (!id) {
       return res.status(400).json({ error: 'Missing event ID' });
     }
 
-    const success = await acknowledgeEvent(id, user || 'Dashboard User');
+    const success = await acknowledgeEvent(id, user || 'Dashboard User', category || 'reception');
     if (success) {
       res.json({ success: true, message: 'Event acknowledged.' });
     } else {
