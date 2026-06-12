@@ -1045,7 +1045,19 @@
     const row = item.row;
     const headers = row.headers || [];
     const rowData = row.row || [];
-    const firstCell = rowData[0] || '—';
+    
+    // Find customer name, booking code, and check-in date dynamically for a more descriptive card title
+    const nameIndex = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'NAME');
+    const codeIndex = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'CODE');
+    const checkInIndex = headers.findIndex(h => h && ['CHECK IN', 'CHECK-IN', 'CHECKIN'].includes(h.toString().trim().toUpperCase()));
+    
+    const name = nameIndex !== -1 ? (rowData[nameIndex] || '').toString().trim() : (rowData[3] || '').toString().trim();
+    const code = codeIndex !== -1 ? (rowData[codeIndex] || '').toString().trim() : (rowData[1] || '').toString().trim();
+    const checkIn = checkInIndex !== -1 ? (rowData[checkInIndex] || '').toString().trim() : (rowData[7] || '').toString().trim();
+    
+    const cardTitle = name 
+      ? `${name}${code ? ` (${code})` : ''}${checkIn ? ` • In: ${checkIn}` : ''}` 
+      : (rowData[0] || '—');
     const typeLabel = item.type === 'new' ? 'NEW ROW' : 'MODIFIED';
     const cardClass = item.type === 'new' ? 'new-row' : 'modified';
     const badgeClass = item.type === 'new' ? 'new' : 'modified';
@@ -1111,7 +1123,7 @@
         <div class="card-header" onclick="toggleCard('${id}')">
           <div class="card-left">
             <span class="type-badge ${badgeClass}">${typeLabel}</span>
-            <span class="card-title">${escapeHtml(String(firstCell))}</span>
+            <span class="card-title">${escapeHtml(String(cardTitle))}</span>
           </div>
           <div style="display:flex;align-items:center;gap:12px">
             <span class="card-time">${formatTime(item.checkedAt)}</span>
