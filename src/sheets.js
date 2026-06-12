@@ -1,4 +1,4 @@
-const { google } = require('googleapis');
+const { JWT } = require('google-auth-library');
 const path = require('path');
 const fs = require('fs');
 
@@ -17,25 +17,16 @@ async function fetchSheetData() {
     throw new Error('GOOGLE_SHEET_ID is not set in your environment variables');
   }
 
-  // ── Auth: prefer JSON env var (Render), fall back to file (local) ──────────
-  let auth;
+  let credentials;
 
+  // ── Auth: prefer JSON env var (Render), fall back to file (local) ──────────
   if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
-    // Cloud deployment: parse JSON string from env var
-    let credentials;
     try {
       credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
     } catch (e) {
       throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON. Make sure you pasted the entire file contents.');
     }
-
-    auth = new google.auth.GoogleAuth({
-      credentials,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-    });
-
   } else {
-    // Local development: use key file path
     const keyFilePath = path.resolve(
       process.env.GOOGLE_SERVICE_ACCOUNT_KEY || './service-account.json'
     );
@@ -48,28 +39,40 @@ async function fetchSheetData() {
       );
     }
 
-    auth = new google.auth.GoogleAuth({
-      keyFile: keyFilePath,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-    });
+    try {
+      credentials = JSON.parse(fs.readFileSync(keyFilePath, 'utf-8'));
+    } catch (e) {
+      throw new Error(`Failed to parse service account key file at ${keyFilePath}: ${e.message}`);
+    }
   }
 
-  const sheets = google.sheets({ version: 'v4', auth });
+  const client = new JWT({
+    email: credentials.client_email,
+    key: credentials.private_key,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+  });
 
   // ── Get first sheet tab name dynamically ───────────────────────────────────
-  const meta = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
-  const firstSheetName = meta.data.sheets[0].properties.title;
+  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets(properties(title))`;
+  const metaResponse = await client.request({ url: metaUrl });
+
+  if (!metaResponse || !metaResponse.data || !metaResponse.data.sheets || metaResponse.data.sheets.length === 0) {
+    throw new Error('Could not retrieve sheet metadata. Check your spreadsheet ID and credentials.');
+  }
+
+  const firstSheetName = metaResponse.data.sheets[0].properties.title;
   console.log(`   📋 Reading tab: "${firstSheetName}"`);
 
   // ── Fetch all data (no fixed range — expands with data) ────────────────────
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: sheetId,
-    range: firstSheetName,
-    valueRenderOption: 'FORMATTED_VALUE',
-    dateTimeRenderOption: 'FORMATTED_STRING',
-  });
+  const range = encodeURIComponent(firstSheetName);
+  const dataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?valueRenderOption=FORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING`;
+  const dataResponse = await client.request({ url: dataUrl });
 
-  const rows = response.data.values || [];
+  if (!dataResponse || !dataResponse.data) {
+    throw new Error('Could not retrieve sheet values.');
+  }
+
+  const rows = dataResponse.data.values || [];
   return rows;
 }
 
