@@ -344,6 +344,39 @@
     .refresh-btn:hover { background: rgba(88,166,255,0.25); }
     .refresh-btn.spinning .refresh-icon { animation: spin 0.8s linear infinite; display: inline-block; }
 
+    /* ── Acknowledge Button & Badge ── */
+    .ack-btn {
+      padding: 6px 12px;
+      background: var(--yellow-bg);
+      border: 1px solid rgba(210,153,34,0.3);
+      color: var(--yellow);
+      border-radius: var(--radius-sm);
+      font-size: 0.78rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .ack-btn:hover { background: rgba(210,153,34,0.25); }
+    .ack-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    
+    .ack-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      background: var(--green-bg);
+      border: 1px solid rgba(63,185,80,0.3);
+      color: var(--green);
+      border-radius: var(--radius-sm);
+      font-size: 0.75rem;
+      font-weight: 500;
+      margin-top: 12px;
+    }
+
     /* ── Month header ── */
     .month-label {
       font-size: 0.78rem;
@@ -522,6 +555,9 @@
     <div class="header-right">
       <span id="db-status-badge" class="type-badge" style="cursor: help; text-transform: none; display: inline-flex; align-items: center; gap: 4px;" title="Checking database...">Database: —</span>
       Last check: <span id="last-check-time">—</span>
+      <button class="refresh-btn" id="trigger-btn" onclick="triggerManualCheck()" style="background: rgba(88,166,255,0.05); color: var(--accent); border-color: rgba(88,166,255,0.2); margin-right: 8px;">
+        <span class="refresh-icon">⏱</span> Run Check Now
+      </button>
       <button class="refresh-btn" id="refresh-btn" onclick="loadData()">
         <span class="refresh-icon">↻</span> Refresh
       </button>
@@ -628,6 +664,94 @@
   let allBookings = [];
   let bookingsHeaders = [];
   let activeFilter = 'all';
+
+  // ── Trigger manual sheet check from dashboard ──
+  async function triggerManualCheck() {
+    const btn = document.getElementById('trigger-btn');
+    if (!btn) return;
+    
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="refresh-icon spinning">⏱</span> Checking...';
+    
+    try {
+      const res = await fetch('/api/check', { method: 'POST' });
+      const data = await res.json();
+      
+      if (res.ok && data.success) {
+        await loadData();
+        showToast('✅ Sheet check completed successfully!');
+      } else {
+        showToast('❌ Error: ' + (data.error || 'Failed to complete check.'));
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('❌ Network error while triggering check.');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    }
+  }
+
+  // ── Acknowledge card from dashboard ──
+  async function acknowledgeCard(eventId, buttonEl, event) {
+    if (event) event.stopPropagation();
+    if (!eventId) return;
+    
+    buttonEl.disabled = true;
+    buttonEl.textContent = 'Acknowledging...';
+    
+    try {
+      const res = await fetch('/api/history/acknowledge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: eventId, user: 'Dashboard User' })
+      });
+      
+      if (res.ok) {
+        await loadData();
+      } else {
+        showToast('❌ Failed to acknowledge event.');
+        buttonEl.disabled = false;
+        buttonEl.textContent = 'Acknowledge';
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('❌ Error connecting to server.');
+      buttonEl.disabled = false;
+      buttonEl.textContent = 'Acknowledge';
+    }
+  }
+
+  // Helper toast notification
+  function showToast(msg) {
+    let toast = document.getElementById('dashboard-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'dashboard-toast';
+      toast.style.position = 'fixed';
+      toast.style.bottom = '20px';
+      toast.style.right = '20px';
+      toast.style.background = 'var(--bg-secondary)';
+      toast.style.border = '1px solid var(--border)';
+      toast.style.color = 'var(--text-primary)';
+      toast.style.padding = '12px 24px';
+      toast.style.borderRadius = 'var(--radius-sm)';
+      toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
+      toast.style.zIndex = '9999';
+      toast.style.fontSize = '0.88rem';
+      toast.style.transition = 'all 0.3s ease';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateY(0)';
+    
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(10px)';
+    }, 4000);
+  }
   let activeTab = 'changelog'; // 'changelog', 'bookings', or 'allbookings'
   let displayLimit = 50; // Client-side pagination limit for rendering speed
 
@@ -865,10 +989,26 @@
           continue;
         }
         for (const row of (event.newRows || [])) {
-          items.push({ type: 'new', row, checkedAt: event.checkedAt });
+          items.push({ 
+            type: 'new', 
+            row, 
+            checkedAt: event.checkedAt,
+            eventId: event.id,
+            acknowledged: event.acknowledged || false,
+            acknowledgedBy: event.acknowledgedBy || null,
+            acknowledgedAt: event.acknowledgedAt || null
+          });
         }
         for (const row of (event.modifiedRows || [])) {
-          items.push({ type: 'modified', row, checkedAt: event.checkedAt });
+          items.push({ 
+            type: 'modified', 
+            row, 
+            checkedAt: event.checkedAt,
+            eventId: event.id,
+            acknowledged: event.acknowledged || false,
+            acknowledgedBy: event.acknowledgedBy || null,
+            acknowledgedAt: event.acknowledgedAt || null
+          });
         }
       }
 
@@ -1118,6 +1258,25 @@
         </table>`;
     }
 
+    let ackHtml = '';
+    if (item.type !== 'error') {
+      if (item.acknowledged) {
+        ackHtml = `
+          <div class="ack-section" style="border-top: 1px dashed var(--border); margin-top: 16px; padding-top: 4px;">
+            <span class="ack-badge">
+              ✅ Acknowledged by ${escapeHtml(item.acknowledgedBy)} ${item.acknowledgedAt ? `at ${new Date(item.acknowledgedAt).toLocaleString()}` : ''}
+            </span>
+          </div>`;
+      } else if (item.eventId) {
+        ackHtml = `
+          <div class="ack-section" style="border-top: 1px dashed var(--border); margin-top: 16px; padding-top: 4px;">
+            <button class="ack-btn" onclick="acknowledgeCard('${item.eventId}', this, event)">
+              ✅ Acknowledge Alert
+            </button>
+          </div>`;
+      }
+    }
+
     return `
       <div class="change-card ${cardClass}" id="${id}">
         <div class="card-header" onclick="toggleCard('${id}')">
@@ -1130,7 +1289,10 @@
             <span class="chevron">▼</span>
           </div>
         </div>
-        <div class="card-body">${bodyHtml}</div>
+        <div class="card-body">
+          ${bodyHtml}
+          ${ackHtml}
+        </div>
       </div>`;
   }
 

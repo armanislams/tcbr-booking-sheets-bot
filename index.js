@@ -1,6 +1,8 @@
 require('dotenv').config();
 const cron = require('node-cron');
+const crypto = require('crypto');
 const { startDashboard } = require('./src/dashboard');
+const { startTelegramListener } = require('./src/telegramListener');
 const { fetchSheetData } = require('./src/sheets');
 const { detectChanges } = require('./src/detector');
 const { sendTelegramAlert } = require('./src/telegram');
@@ -13,7 +15,9 @@ let isBoot = true;
 // ─── Run check job ──────────────────────────────────────────────────────────
 async function runCheck() {
   const now = new Date();
-  console.log(`\n[${now.toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' })}] ⏱  Running scheduled check...`);
+  console.log(`\n[${now.toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' })}] ⏱  Running check...`);
+  
+  const eventId = crypto.randomUUID();
 
   try {
     // 1. Fetch latest data from Google Sheet
@@ -54,7 +58,7 @@ async function runCheck() {
 
     // 4. Send notification if there are changes (skip on first boot to prevent spam)
     if (!isInitialRun && (newRows.length > 0 || modifiedRows.length > 0)) {
-      await sendTelegramAlert({ newRows, modifiedRows, checkedAt: now, offlineInfo });
+      await sendTelegramAlert({ newRows, modifiedRows, checkedAt: now, offlineInfo, eventId });
       console.log('   ✅ Telegram notification sent!');
     } else {
       if (isInitialRun) {
@@ -66,6 +70,7 @@ async function runCheck() {
 
     // 5. Log to history for dashboard
     await appendHistory({
+      id: eventId,
       checkedAt: now.toISOString(),
       totalRows: rows.length,
       currentMonthCount: currentMonthRows.length,
@@ -82,7 +87,7 @@ async function runCheck() {
     console.error('   ❌ Error during check:', err.message);
     // Notify via Telegram about the error too
     try {
-      await sendTelegramAlert({ error: err.message, checkedAt: now });
+      await sendTelegramAlert({ error: err.message, checkedAt: now, eventId });
     } catch (_) {}
   } finally {
     isBoot = false;
@@ -90,7 +95,10 @@ async function runCheck() {
 }
 
 // ─── Start dashboard server ─────────────────────────────────────────────────
-startDashboard();
+startDashboard(runCheck);
+
+// ─── Start Telegram listener ────────────────────────────────────────────────
+startTelegramListener(runCheck);
 
 // ─── Run once immediately on startup ────────────────────────────────────────
 runCheck();

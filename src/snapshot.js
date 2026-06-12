@@ -230,4 +230,51 @@ async function loadHistory() {
   }
 }
 
-module.exports = { loadSnapshot, saveSnapshot, appendHistory, loadHistory, getDbStatus };
+/**
+ * Acknowledge a change event by its ID.
+ */
+async function acknowledgeEvent(eventId, username) {
+  // Clear cache to reflect updates
+  cachedHistory = null;
+  lastHistoryLoadTime = 0;
+
+  const db = await getDb();
+  if (db) {
+    try {
+      const collection = db.collection('history');
+      const result = await collection.updateOne(
+        { id: eventId },
+        { 
+          $set: { 
+            acknowledged: true, 
+            acknowledgedBy: username, 
+            acknowledgedAt: new Date().toISOString() 
+          } 
+        }
+      );
+      return result.modifiedCount > 0;
+    } catch (err) {
+      console.error('   ❌ MongoDB acknowledgeEvent error:', err.message);
+      return false;
+    }
+  }
+
+  if (!fs.existsSync(HISTORY_FILE)) return false;
+  try {
+    let history = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf-8'));
+    const idx = history.findIndex(item => item.id === eventId);
+    if (idx !== -1) {
+      history[idx].acknowledged = true;
+      history[idx].acknowledgedBy = username;
+      history[idx].acknowledgedAt = new Date().toISOString();
+      fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf-8');
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error('   ❌ Local file acknowledgeEvent error:', err.message);
+    return false;
+  }
+}
+
+module.exports = { loadSnapshot, saveSnapshot, appendHistory, loadHistory, getDbStatus, acknowledgeEvent };

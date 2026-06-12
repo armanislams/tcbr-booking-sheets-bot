@@ -4,25 +4,32 @@ const CHAT_ID   = process.env.TELEGRAM_CHAT_ID;
 /**
  * Sends a Telegram message.
  * @param {string} text - The message text (supports Telegram HTML formatting)
+ * @param {object} replyMarkup - Optional Telegram reply_markup (e.g. inline keyboard)
  */
-async function sendMessage(text) {
+async function sendMessage(text, replyMarkup = null) {
   if (!BOT_TOKEN || !CHAT_ID) {
     console.warn('   ⚠️  Telegram not configured. Skipping notification.');
     return;
   }
 
   const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+  const requestBody = {
+    chat_id: CHAT_ID,
+    text,
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+  };
+
+  if (replyMarkup) {
+    requestBody.reply_markup = replyMarkup;
+  }
+
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      chat_id: CHAT_ID,
-      text,
-      parse_mode: 'HTML',
-      disable_web_page_preview: true,
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
@@ -72,7 +79,7 @@ function escapeHtml(str) {
 /**
  * Build and send a Telegram alert summarizing detected changes.
  */
-async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null, checkedAt, offlineInfo }) {
+async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null, checkedAt, offlineInfo, eventId }) {
   const now = checkedAt || new Date();
   const monthName = now.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur' });
   const timestamp = now.toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' });
@@ -139,22 +146,37 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
 
   const fullMessage = parts.join('');
 
+  // Create acknowledgement button for Telegram changes
+  const replyMarkup = eventId ? {
+    inline_keyboard: [
+      [
+        {
+          text: '✅ Acknowledge',
+          callback_data: `ack:${eventId}`
+        }
+      ]
+    ]
+  } : null;
+
   // Telegram has a 4096 char limit per message — split if needed
   const LIMIT = 4000;
   if (fullMessage.length <= LIMIT) {
-    await sendMessage(fullMessage);
+    await sendMessage(fullMessage, replyMarkup);
   } else {
     // Send in chunks
     let chunk = '';
     const lines = fullMessage.split('\n');
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       if ((chunk + line + '\n').length > LIMIT) {
         await sendMessage(chunk);
         chunk = '';
       }
       chunk += line + '\n';
     }
-    if (chunk.trim()) await sendMessage(chunk);
+    if (chunk.trim()) {
+      await sendMessage(chunk, replyMarkup);
+    }
   }
 }
 
