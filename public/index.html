@@ -1194,9 +1194,11 @@
     const name = nameIndex !== -1 ? (rowData[nameIndex] || '').toString().trim() : (rowData[3] || '').toString().trim();
     const code = codeIndex !== -1 ? (rowData[codeIndex] || '').toString().trim() : (rowData[1] || '').toString().trim();
     const checkIn = checkInIndex !== -1 ? (rowData[checkInIndex] || '').toString().trim() : (rowData[7] || '').toString().trim();
+    const roomIndex = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM');
+    const room = roomIndex !== -1 ? rowData[roomIndex] : '';
     
     const cardTitle = name 
-      ? `${name}${code ? ` (${code})` : ''}${checkIn ? ` • In: ${checkIn}` : ''}` 
+      ? `${name}${code ? ` (${code})` : ''}${checkIn ? ` • In: ${checkIn}` : ''}${room && room !== '—' ? ` • 🚪 ${room}` : ''}` 
       : (rowData[0] || '—');
     const typeLabel = item.type === 'new' ? 'NEW ROW' : 'MODIFIED';
     const cardClass = item.type === 'new' ? 'new-row' : 'modified';
@@ -1210,6 +1212,7 @@
         .map((h, i) => {
           const val = (rowData[i] || '').toString().trim();
           if (!val) return '';
+          if (['TOTAL AMOUNT', 'DEPOSIT', 'BALANCE', 'STATUS'].includes(h.toUpperCase().trim())) return '';
           return `<tr><td style="color:var(--text-secondary);width:35%">${escapeHtml(h)}</td><td>${escapeHtml(val)}</td></tr>`;
         })
         .filter(Boolean)
@@ -1224,21 +1227,28 @@
     } else {
       // Show only changed cells with before/after
       const changes = (row.changes || []);
-      const changesRows = changes.map(c => `
-        <tr>
-          <td style="color:var(--text-secondary);width:30%">${escapeHtml(c.column)}</td>
-          <td>
-            <span class="diff-before">${escapeHtml(c.before) || '(empty)'}</span>
-            <span class="diff-arrow">→</span>
-            <span class="diff-after">${escapeHtml(c.after) || '(empty)'}</span>
-          </td>
-        </tr>`).join('');
+      const changesRows = changes
+        .map(c => {
+          if (['TOTAL AMOUNT', 'DEPOSIT', 'BALANCE', 'STATUS'].includes(c.column.toUpperCase().trim())) return '';
+          return `
+            <tr>
+              <td style="color:var(--text-secondary);width:30%">${escapeHtml(c.column)}</td>
+              <td>
+                <span class="diff-before">${escapeHtml(c.before) || '(empty)'}</span>
+                <span class="diff-arrow">→</span>
+                <span class="diff-after">${escapeHtml(c.after) || '(empty)'}</span>
+              </td>
+            </tr>`;
+        })
+        .filter(Boolean)
+        .join('');
 
       // Show full row data
       const fullRows = headers
         .map((h, i) => {
           const val = (rowData[i] || '').toString().trim();
           if (!val) return '';
+          if (['TOTAL AMOUNT', 'DEPOSIT', 'BALANCE', 'STATUS'].includes(h.toUpperCase().trim())) return '';
           return `<tr><td style="color:var(--text-secondary);width:35%">${escapeHtml(h)}</td><td>${escapeHtml(val)}</td></tr>`;
         })
         .filter(Boolean)
@@ -1306,11 +1316,22 @@
     const checkIn = rowData[7] || '—';
     const checkOut = rowData[8] || '—';
 
+    // Find ROOM, ROOM_PAX and REMARK indices dynamically from bookingsHeaders
+    const roomIndex = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM');
+    const roomPaxIndex = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM_PAX');
+    const remarkIndex = bookingsHeaders.findIndex(h => h && ['REMARK', 'REMARKS'].includes(h.toString().trim().toUpperCase()));
+    
+    const roomVal = roomIndex !== -1 ? (rowData[roomIndex] || '—') : '—';
+    const roomPaxVal = roomPaxIndex !== -1 ? (rowData[roomPaxIndex] || '—') : '—';
+    const remarkVal = remarkIndex !== -1 ? (rowData[remarkIndex] || '') : (rowData[22] || '');
+
     // Fields requested by user to display in detail table
     const fields = [
       { key: 'CODE', val: rowData[1] },
       { key: 'PIC', val: rowData[2] },
       { key: 'NAME', val: rowData[3] },
+      { key: 'ROOM ASSIGNED', val: roomVal },
+      { key: 'ROOM GUESTS (PAX)', val: roomPaxVal },
       { key: 'SNORKELLING', val: rowData[4] },
       { key: 'DIVING', val: rowData[5] },
       { key: 'COURSE', val: rowData[6] },
@@ -1321,6 +1342,7 @@
       { key: 'SHARING', val: rowData[11] },
       { key: 'BED', val: rowData[12] },
       { key: 'SPECIAL REQUEST', val: rowData[13] },
+      { key: 'REMARK', val: remarkVal },
     ];
 
     const rows = fields
@@ -1339,6 +1361,7 @@
             <span class="type-badge" style="background:var(--accent-glow);color:var(--accent);border:1px solid rgba(88,166,255,0.3)">${escapeHtml(String(code))}</span>
             <span class="card-title">${escapeHtml(String(name))}</span>
             <span style="font-size:0.75rem;color:var(--text-muted)">(${escapeHtml(String(pic))})</span>
+            ${roomVal && roomVal !== '—' ? `<span class="type-badge" style="background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(210,153,34,0.3);text-transform:none;margin-left:4px;display:inline-flex;align-items:center;gap:4px">🚪 Room: ${escapeHtml(String(roomVal))} (${escapeHtml(String(roomPaxVal || '—'))} Pax)</span>` : ''}
           </div>
           <div style="display:flex;align-items:center;gap:12px">
             <span class="card-time" style="color:var(--text-secondary)">${escapeHtml(String(checkIn))} → ${escapeHtml(String(checkOut))}</span>

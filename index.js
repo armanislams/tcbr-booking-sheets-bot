@@ -3,8 +3,8 @@ const cron = require('node-cron');
 const crypto = require('crypto');
 const { startDashboard } = require('./src/dashboard');
 const { startTelegramListener } = require('./src/telegramListener');
-const { fetchSheetData } = require('./src/sheets');
-const { detectChanges } = require('./src/detector');
+const { fetchSheetData, fetchRoomMap } = require('./src/sheets');
+const { detectChanges, findHeaderRowIndex, parseDate, getMonthNameFromText } = require('./src/detector');
 const { sendTelegramAlert } = require('./src/telegram');
 const { loadSnapshot, saveSnapshot, appendHistory } = require('./src/snapshot');
 
@@ -28,7 +28,88 @@ async function runCheck() {
     const rows = await fetchSheetData();
     console.log(`   📄 Fetched ${rows.length} total rows from sheet`);
 
-    // 2. Load previous snapshot
+    // 2. Identify check-in months in the booking rows to fetch room allocations dynamically
+    const monthsToFetch = new Set();
+    
+    // Add current month name as fallback
+    const currentMonthName = getMonthNameFromText(new Date().toLocaleString('en-US', { month: 'long' })) || 'June';
+    monthsToFetch.add(currentMonthName);
+
+    const headerIndex = findHeaderRowIndex(rows);
+    if (headerIndex !== -1) {
+      const headers = rows[headerIndex] || [];
+      const checkInIndex = headers.findIndex(h => h && ['CHECK IN', 'CHECK-IN', 'CHECKIN'].includes(h.toString().trim().toUpperCase()));
+      if (checkInIndex !== -1) {
+        for (let i = headerIndex + 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row.length <= checkInIndex) continue;
+          const checkInVal = row[checkInIndex];
+          const monthName = getMonthNameFromText(checkInVal);
+          if (monthName) {
+            monthsToFetch.add(monthName);
+          } else {
+            const date = parseDate(checkInVal);
+            if (date) {
+              const parsedMonthName = getMonthNameFromText(date.toLocaleString('en-US', { month: 'long' }));
+              if (parsedMonthName) monthsToFetch.add(parsedMonthName);
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Fetch room allocations map for these months
+    const monthNamesList = Array.from(monthsToFetch);
+    console.log(`   🔍 Fetching room maps for: ${monthNamesList.join(', ')}`);
+    const roomMap = await fetchRoomMap(monthNamesList);
+
+    // 4. Enrich rows with ROOM and ROOM_PAX columns
+    if (headerIndex !== -1) {
+      const headers = rows[headerIndex];
+      const codeIndex = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'CODE');
+      const checkInIndex = headers.findIndex(h => h && ['CHECK IN', 'CHECK-IN', 'CHECKIN'].includes(h.toString().trim().toUpperCase()));
+      
+      headers.push('ROOM');
+      headers.push('ROOM_PAX');
+
+      for (let i = headerIndex + 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.every(cell => !cell || cell.toString().trim() === '')) {
+          continue;
+        }
+
+        const code = codeIndex !== -1 ? (row[codeIndex] || '').toString().trim().toUpperCase() : '';
+        
+        // Find the check-in month name to locate the correct calendar sheet
+        let checkInMonth = currentMonthName.toUpperCase();
+        if (checkInIndex !== -1 && row.length > checkInIndex) {
+          const checkInVal = row[checkInIndex];
+          const monthName = getMonthNameFromText(checkInVal);
+          if (monthName) {
+            checkInMonth = monthName.toUpperCase();
+          } else {
+            const date = parseDate(checkInVal);
+            if (date) {
+              const parsedMonthName = getMonthNameFromText(date.toLocaleString('en-US', { month: 'long' }));
+              if (parsedMonthName) {
+                checkInMonth = parsedMonthName.toUpperCase();
+              }
+            }
+          }
+        }
+
+        const monthMap = roomMap[checkInMonth] || {};
+        const allocation = monthMap[code] || { rooms: '—', pax: '—' };
+
+        while (row.length < headers.length - 2) {
+          row.push('');
+        }
+        row.push(allocation.rooms || '—');
+        row.push(allocation.pax || '—');
+      }
+    }
+
+    // 5. Load previous snapshot
     const previousSnapshot = await loadSnapshot();
     const isInitialRun = !previousSnapshot;
 

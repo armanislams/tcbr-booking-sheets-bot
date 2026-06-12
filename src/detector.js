@@ -14,6 +14,41 @@ const CHECK_IN_COL  = 7; // Column H (0-indexed)
 const CHECK_OUT_COL = 8; // Column I (0-indexed)
 
 /**
+ * Helper to get English month name from a text string case-insensitively.
+ * Supports typos and abbreviations.
+ */
+function getMonthNameFromText(text) {
+  const index = getMonthIndexFromText(text);
+  if (index === -1) return null;
+  const MONTH_NAMES = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  return MONTH_NAMES[index];
+}
+
+/**
+ * Helper to get 0-indexed month number from a text string case-insensitively.
+ */
+function getMonthIndexFromText(text) {
+  if (!text || typeof text !== 'string') return -1;
+  const lower = text.toLowerCase();
+  if (lower.includes('jan')) return 0;
+  if (lower.includes('feb')) return 1;
+  if (lower.includes('mar')) return 2; // matches march, marc, marcj
+  if (lower.includes('apr')) return 3;
+  if (lower.includes('may')) return 4;
+  if (lower.includes('jun')) return 5;
+  if (lower.includes('jul')) return 6;
+  if (lower.includes('aug')) return 7;
+  if (lower.includes('sep')) return 8; // matches sept, september
+  if (lower.includes('oct')) return 9;
+  if (lower.includes('nov')) return 10;
+  if (lower.includes('dec')) return 11;
+  return -1;
+}
+
+/**
  * Parse a date string in common formats like:
  *   "10/06/2026", "2026-06-10", "June 10, 2026", "10-Jun-2026", etc.
  * Returns a Date object or null if unparseable.
@@ -39,22 +74,7 @@ function parseDate(value) {
   const dayMatch = trimmed.match(/^(\d+)/);
   if (dayMatch) {
     const day = parseInt(dayMatch[1], 10);
-    const rest = trimmed.toLowerCase();
-
-    let month = -1;
-    if (rest.includes('jan')) month = 0;
-    else if (rest.includes('feb')) month = 1;
-    else if (rest.includes('mar')) month = 2; // matches march, marc, marcj
-    else if (rest.includes('apr')) month = 3;
-    else if (rest.includes('may')) month = 4;
-    else if (rest.includes('jun')) month = 5;
-    else if (rest.includes('jul')) month = 6;
-    else if (rest.includes('aug')) month = 7;
-    else if (rest.includes('sep')) month = 8;
-    else if (rest.includes('oct')) month = 9;
-    else if (rest.includes('nov')) month = 10;
-    else if (rest.includes('dec')) month = 11;
-
+    const month = getMonthIndexFromText(trimmed);
     if (month !== -1) {
       const now = new Date();
       const year = now.getFullYear();
@@ -172,4 +192,4 @@ function detectChanges(rows, prevSnapshot) {
   return { newRows, modifiedRows, currentMonthRows };
 }
 
-module.exports = { detectChanges, buildCurrentMonthMap, parseDate, isCurrentMonth, rowKey, findHeaderRowIndex };
+module.exports = { detectChanges, buildCurrentMonthMap, parseDate, isCurrentMonth, rowKey, findHeaderRowIndex, getMonthNameFromText };
