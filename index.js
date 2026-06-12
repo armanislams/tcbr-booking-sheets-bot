@@ -12,6 +12,10 @@ console.log('🤖 Sheets Monitor Bot starting...');
 
 let isBoot = true;
 
+// Error alert snoozing state
+let lastErrorAlertTime = 0;
+let lastErrorMessage = '';
+
 // ─── Run check job ──────────────────────────────────────────────────────────
 async function runCheck() {
   const now = new Date();
@@ -83,12 +87,33 @@ async function runCheck() {
     // 6. Save new snapshot
     await saveSnapshot(rows, currentMonthRows);
 
+    // Reset error alerts state on success
+    lastErrorAlertTime = 0;
+    lastErrorMessage = '';
+
   } catch (err) {
     console.error('   ❌ Error during check:', err.message);
-    // Notify via Telegram about the error too
-    try {
-      await sendTelegramAlert({ error: err.message, checkedAt: now, eventId });
-    } catch (_) {}
+    
+    const errorMsg = err.message;
+    const nowMs = now.getTime();
+    const snoozeHours = parseInt(process.env.ERROR_ALERT_SNOOZE_HOURS || '6', 10);
+    const snoozeMs = snoozeHours * 60 * 60 * 1000;
+
+    const isSameError = (errorMsg === lastErrorMessage);
+    const hasSnoozePassed = (nowMs - lastErrorAlertTime > snoozeMs);
+
+    if (!isSameError || hasSnoozePassed) {
+      try {
+        await sendTelegramAlert({ error: errorMsg, checkedAt: now, eventId });
+        lastErrorAlertTime = nowMs;
+        lastErrorMessage = errorMsg;
+        console.log('   ✅ Telegram error alert sent.');
+      } catch (tgErr) {
+        console.error('   ❌ Failed to send Telegram error alert:', tgErr.message);
+      }
+    } else {
+      console.log(`   ℹ️ Telegram error alert snoozed (Same error within ${snoozeHours}h).`);
+    }
   } finally {
     isBoot = false;
   }

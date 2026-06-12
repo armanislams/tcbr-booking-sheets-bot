@@ -23,3 +23,5 @@ services:
         value: "10000"
       - key: NODE_ENV
         value: production
+      - key: ERROR_ALERT_SNOOZE_HOURS
+        value: "6"
