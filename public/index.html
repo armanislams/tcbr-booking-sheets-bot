@@ -1487,10 +1487,11 @@
             <span class="type-badge" style="background:var(--accent-glow);color:var(--accent);border:1px solid rgba(88,166,255,0.3)">${escapeHtml(String(code))}</span>
             <span class="card-title">${escapeHtml(String(name))}${titleRemarkInfo}</span>
             <span style="font-size:0.75rem;color:var(--text-muted)">(${escapeHtml(String(pic))})</span>
-            ${roomVal && roomVal !== '—' ? `<span class="type-badge" style="background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(210,153,34,0.3);text-transform:none;margin-left:4px;display:inline-flex;align-items:center;gap:4px">🚪 Room: ${escapeHtml(String(roomVal))} (${escapeHtml(String(roomPaxVal || '—'))} Pax)</span>` : ''}
+            ${roomVal && roomVal !== '—' ? `<span class="type-badge" style="background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(210,153,34,0.3);text-transform:none;margin-left:4px;display:inline-flex;align-items:center;gap:4px">🚪 Room: ${escapeHtml(String(roomVal))}</span>` : ''}
             ${remarkBadge}
           </div>
           <div style="display:flex;align-items:center;gap:12px">
+            ${roomPaxVal && roomPaxVal !== '—' ? `<span class="type-badge" style="background:var(--green-bg);color:var(--green);border:1px solid rgba(63,185,80,0.3);text-transform:none;display:inline-flex;align-items:center;gap:4px">👤 ${escapeHtml(String(roomPaxVal))} Pax</span>` : ''}
             <span class="card-time" style="color:var(--text-secondary)">${escapeHtml(String(checkIn))} → ${escapeHtml(String(checkOut))}</span>
             <span class="chevron">▼</span>
           </div>

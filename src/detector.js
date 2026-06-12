@@ -198,4 +198,29 @@ function detectChanges(rows, prevSnapshot) {
   return { newRows, modifiedRows, currentMonthRows };
 }
 
-module.exports = { detectChanges, buildCurrentMonthMap, parseDate, isCurrentMonth, rowKey, findHeaderRowIndex, getMonthNameFromText };
+function getStayDays(checkInStr, checkOutStr) {
+  const checkInDate = parseDate(checkInStr);
+  const checkOutDate = parseDate(checkOutStr);
+  if (!checkInDate) return [];
+
+  const days = [];
+  const start = new Date(checkInDate);
+  const end = checkOutDate ? new Date(checkOutDate) : new Date(checkInDate);
+
+  if (!checkOutDate || end <= start) {
+    const monthName = getMonthNameFromText(start.toLocaleString('en-US', { month: 'long' })) || 'June';
+    days.push({ day: start.getDate(), month: monthName.toUpperCase() });
+    return days;
+  }
+
+  let current = new Date(start);
+  while (current < end) {
+    const monthName = getMonthNameFromText(current.toLocaleString('en-US', { month: 'long' })) || 'June';
+    days.push({ day: current.getDate(), month: monthName.toUpperCase() });
+    current.setDate(current.getDate() + 1);
+  }
+
+  return days;
+}
+
+module.exports = { detectChanges, buildCurrentMonthMap, parseDate, isCurrentMonth, rowKey, findHeaderRowIndex, getMonthNameFromText, getStayDays };

@@ -181,7 +181,17 @@ async function fetchRoomMap(monthsToFetch = []) {
     const dataResponse = await client.request({ url: dataUrl });
     const rows = dataResponse.data.values || [];
 
-    const monthAllocations = {}; // { [code]: { [room]: pax } }
+    const monthAllocations = {}; // { [code]: { [day]: { [room]: pax } } }
+
+    const dayNumbersRow = rows[4] || [];
+    const colIndexToDay = {};
+    for (let colIndex = 2; colIndex < dayNumbersRow.length; colIndex++) {
+      const dayStr = (dayNumbersRow[colIndex] || '').toString().trim();
+      const dayNum = parseInt(dayStr, 10);
+      if (!isNaN(dayNum)) {
+        colIndexToDay[colIndex] = dayNum;
+      }
+    }
 
     // Calendar room assignments start at Row 6 (index 5 in 0-indexed rows)
     for (let rowIndex = 5; rowIndex < rows.length; rowIndex++) {
@@ -195,8 +205,8 @@ async function fetchRoomMap(monthsToFetch = []) {
 
       const roomNumber = roomMatch[1];
 
-      // Scan day columns (index 1 onwards)
-      for (let colIndex = 1; colIndex < row.length; colIndex++) {
+      // Scan day columns (index 2 onwards, ignoring Column B which contains data from the previous month)
+      for (let colIndex = 2; colIndex < row.length; colIndex++) {
         const cellValue = (row[colIndex] || '').toString().trim();
         if (!cellValue) continue;
 
@@ -220,34 +230,24 @@ async function fetchRoomMap(monthsToFetch = []) {
           }
 
           const upperCode = bookingCode.toUpperCase();
-          if (!monthAllocations[upperCode]) {
-            monthAllocations[upperCode] = {};
+          const dayNum = colIndexToDay[colIndex];
+          if (dayNum !== undefined) {
+            if (!monthAllocations[upperCode]) {
+              monthAllocations[upperCode] = {};
+            }
+            if (!monthAllocations[upperCode][dayNum]) {
+              monthAllocations[upperCode][dayNum] = {};
+            }
+            monthAllocations[upperCode][dayNum][roomNumber] = Math.max(
+              monthAllocations[upperCode][dayNum][roomNumber] || 0,
+              pax
+            );
           }
-          monthAllocations[upperCode][roomNumber] = Math.max(monthAllocations[upperCode][roomNumber] || 0, pax);
         }
       }
     }
 
-    // Format this month's allocations (e.g., "H101 (2 Pax), H105 (3 Pax)")
-    const formattedMonthMap = {};
-    for (const code in monthAllocations) {
-      const roomEntries = monthAllocations[code];
-      const roomStrings = [];
-      let totalPax = 0;
-
-      for (const roomNumber in roomEntries) {
-        const pax = roomEntries[roomNumber];
-        roomStrings.push(`${roomNumber} (${pax} Pax)`);
-        totalPax += pax;
-      }
-
-      formattedMonthMap[code] = {
-        rooms: roomStrings.join(', '),
-        pax: totalPax
-      };
-    }
-
-    roomMapByMonth[monthKey] = formattedMonthMap;
+    roomMapByMonth[monthKey] = monthAllocations;
   }
 
   return roomMapByMonth;

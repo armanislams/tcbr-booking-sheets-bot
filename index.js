@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const { startDashboard } = require('./src/dashboard');
 const { startTelegramListener } = require('./src/telegramListener');
 const { fetchSheetData, fetchRoomMap } = require('./src/sheets');
-const { detectChanges, findHeaderRowIndex, parseDate, getMonthNameFromText } = require('./src/detector');
+const { detectChanges, findHeaderRowIndex, parseDate, getMonthNameFromText, getStayDays } = require('./src/detector');
 const { sendTelegramAlert } = require('./src/telegram');
 const { loadSnapshot, saveSnapshot, appendHistory } = require('./src/snapshot');
 
@@ -28,7 +28,7 @@ async function runCheck() {
     const rows = await fetchSheetData();
     console.log(`   📄 Fetched ${rows.length} total rows from sheet`);
 
-    // 2. Identify check-in months in the booking rows to fetch room allocations dynamically
+    // 2. Identify check-in and check-out months in the booking rows to fetch room allocations dynamically
     const monthsToFetch = new Set();
     
     // Add current month name as fallback
@@ -39,16 +39,35 @@ async function runCheck() {
     if (headerIndex !== -1) {
       const headers = rows[headerIndex] || [];
       const checkInIndex = headers.findIndex(h => h && ['CHECK IN', 'CHECK-IN', 'CHECKIN'].includes(h.toString().trim().toUpperCase()));
-      if (checkInIndex !== -1) {
-        for (let i = headerIndex + 1; i < rows.length; i++) {
-          const row = rows[i];
-          if (!row || row.length <= checkInIndex) continue;
+      const checkOutIndex = headers.findIndex(h => h && ['CHECK OUT', 'CHECK-OUT', 'CHECKOUT'].includes(h.toString().trim().toUpperCase()));
+      
+      for (let i = headerIndex + 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row) continue;
+        
+        // Add check-in month
+        if (checkInIndex !== -1 && row.length > checkInIndex) {
           const checkInVal = row[checkInIndex];
           const monthName = getMonthNameFromText(checkInVal);
           if (monthName) {
             monthsToFetch.add(monthName);
           } else {
             const date = parseDate(checkInVal);
+            if (date) {
+              const parsedMonthName = getMonthNameFromText(date.toLocaleString('en-US', { month: 'long' }));
+              if (parsedMonthName) monthsToFetch.add(parsedMonthName);
+            }
+          }
+        }
+
+        // Add check-out month (for stays spanning month boundaries)
+        if (checkOutIndex !== -1 && row.length > checkOutIndex) {
+          const checkOutVal = row[checkOutIndex];
+          const monthName = getMonthNameFromText(checkOutVal);
+          if (monthName) {
+            monthsToFetch.add(monthName);
+          } else {
+            const date = parseDate(checkOutVal);
             if (date) {
               const parsedMonthName = getMonthNameFromText(date.toLocaleString('en-US', { month: 'long' }));
               if (parsedMonthName) monthsToFetch.add(parsedMonthName);
@@ -71,7 +90,9 @@ async function runCheck() {
       }
 
       const codeIndex = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'CODE');
+      const nameIndex = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'NAME');
       const checkInIndex = headers.findIndex(h => h && ['CHECK IN', 'CHECK-IN', 'CHECKIN'].includes(h.toString().trim().toUpperCase()));
+      const checkOutIndex = headers.findIndex(h => h && ['CHECK OUT', 'CHECK-OUT', 'CHECKOUT'].includes(h.toString().trim().toUpperCase()));
       
       headers.push('ROOM');
       headers.push('ROOM_PAX');
@@ -82,34 +103,102 @@ async function runCheck() {
           continue;
         }
 
-        const code = codeIndex !== -1 ? (row[codeIndex] || '').toString().trim().toUpperCase() : '';
-        
-        // Find the check-in month name to locate the correct calendar sheet
-        let checkInMonth = currentMonthName.toUpperCase();
-        if (checkInIndex !== -1 && row.length > checkInIndex) {
-          const checkInVal = row[checkInIndex];
-          const monthName = getMonthNameFromText(checkInVal);
-          if (monthName) {
-            checkInMonth = monthName.toUpperCase();
-          } else {
-            const date = parseDate(checkInVal);
-            if (date) {
-              const parsedMonthName = getMonthNameFromText(date.toLocaleString('en-US', { month: 'long' }));
-              if (parsedMonthName) {
-                checkInMonth = parsedMonthName.toUpperCase();
-              }
+        let code = codeIndex !== -1 ? (row[codeIndex] || '').toString().trim().toUpperCase() : '';
+        // If code is empty, try to inherit it from another booking row for the same customer name
+        if (!code && nameIndex !== -1) {
+          const nameVal = (row[nameIndex] || '').toString().trim();
+          if (nameVal) {
+            const matchRow = rows.find(r => {
+              if (!r) return false;
+              const rName = nameIndex !== -1 ? (r[nameIndex] || '').toString().trim() : '';
+              const rCode = codeIndex !== -1 ? (r[codeIndex] || '').toString().trim().toUpperCase() : '';
+              return rName.toLowerCase() === nameVal.toLowerCase() && rCode;
+            });
+            if (matchRow) {
+              code = matchRow[codeIndex].toString().trim().toUpperCase();
             }
           }
         }
 
-        const monthMap = roomMap[checkInMonth] || {};
-        const allocation = monthMap[code] || { rooms: '—', pax: '—' };
+        let roomsStr = '—';
+        let totalPaxVal = '—';
+
+        if (code) {
+          const checkInVal = checkInIndex !== -1 ? (row[checkInIndex] || '') : '';
+          const checkOutVal = checkOutIndex !== -1 ? (row[checkOutIndex] || '') : '';
+          
+          const stayDays = getStayDays(checkInVal, checkOutVal);
+          const checkInDate = parseDate(checkInVal);
+
+          // 1. Gather rooms occupied on the day before check-in (to identify checkout room changes)
+          let prevDay = null;
+          let prevMonth = null;
+          if (checkInDate) {
+            const prevDate = new Date(checkInDate);
+            prevDate.setDate(prevDate.getDate() - 1);
+            prevDay = prevDate.getDate();
+            prevMonth = (getMonthNameFromText(prevDate.toLocaleString('en-US', { month: 'long' })) || 'June').toUpperCase();
+          }
+
+          const prevDayRooms = new Set();
+          if (prevDay && prevMonth && roomMap[prevMonth] && roomMap[prevMonth][code]) {
+            const prevAlloc = roomMap[prevMonth][code][prevDay] || {};
+            for (const room in prevAlloc) {
+              prevDayRooms.add(room);
+            }
+          }
+
+          // 2. Gather rooms occupied on subsequent stay days
+          const subsequentRooms = new Set();
+          for (let idx = 1; idx < stayDays.length; idx++) {
+            const stay = stayDays[idx];
+            const monthMap = roomMap[stay.month] || {};
+            const codeAllocations = monthMap[code] || null;
+            if (codeAllocations) {
+              const dayRooms = codeAllocations[stay.day] || {};
+              for (const room in dayRooms) {
+                subsequentRooms.add(room);
+              }
+            }
+          }
+          
+          const roomEntries = {}; // { [room]: maxPax }
+          for (let idx = 0; idx < stayDays.length; idx++) {
+            const stay = stayDays[idx];
+            const monthMap = roomMap[stay.month] || {};
+            const codeAllocations = monthMap[code] || null;
+            if (codeAllocations) {
+              const dayRooms = codeAllocations[stay.day] || {};
+              for (const room in dayRooms) {
+                // If this is the check-in day, the room was occupied the day before, and is NOT occupied on subsequent days,
+                // it is a vacated/checkout room from a room change. Exclude it from this stay's room listing.
+                if (idx === 0 && prevDayRooms.has(room) && subsequentRooms.size > 0 && !subsequentRooms.has(room)) {
+                  continue;
+                }
+                roomEntries[room] = Math.max(roomEntries[room] || 0, dayRooms[room]);
+              }
+            }
+          }
+
+          const roomStrings = [];
+          let totalPax = 0;
+          for (const room in roomEntries) {
+            const pax = roomEntries[room];
+            roomStrings.push(`${room} (${pax} Pax)`);
+            totalPax += pax;
+          }
+
+          if (roomStrings.length > 0) {
+            roomsStr = roomStrings.join(', ');
+            totalPaxVal = totalPax;
+          }
+        }
 
         while (row.length < headers.length - 2) {
           row.push('');
         }
-        row.push(allocation.rooms || '—');
-        row.push(allocation.pax || '—');
+        row.push(roomsStr);
+        row.push(totalPaxVal);
       }
     }
 
