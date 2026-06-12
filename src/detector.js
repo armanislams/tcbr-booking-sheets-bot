@@ -175,8 +175,14 @@ function detectChanges(rows, prevSnapshot) {
         const before = (prevRow[col] || '').toString().trim();
         const after  = (currRow[col] || '').toString().trim();
         if (before !== after) {
+          const colName = headers[col] || `Col ${col + 1}`;
+          const colUpper = colName.toString().toUpperCase().trim();
+          // Exclude payment details columns from change detection
+          if (['TOTAL AMOUNT', 'DEPOSIT', 'BALANCE', 'STATUS'].includes(colUpper)) {
+            continue;
+          }
           changes.push({
-            column: headers[col] || `Col ${col + 1}`,
+            column: colName,
             before,
             after,
           });

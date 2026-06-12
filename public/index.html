@@ -1204,8 +1204,54 @@
     const roomIndex = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM');
     const room = roomIndex !== -1 ? rowData[roomIndex] : '';
     
+    const colorIndex = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROW_COLOR');
+    const rowColor = colorIndex !== -1 ? (rowData[colorIndex] || 'WHITE') : 'WHITE';
+
+    const remarkIndex = headers.findIndex(h => h && ['REMARK', 'REMARKS'].includes(h.toString().trim().toUpperCase()));
+    const remarkVal = remarkIndex !== -1 ? (rowData[remarkIndex] || '') : (rowData[22] || '');
+    let remarkBadge = '';
+    let titleRemarkInfo = '';
+
+    const isRowWhite = (rowColor === 'WHITE');
+    const lowerRemark = remarkVal.toLowerCase();
+
+    // Special remark check (cancel, postpone, double code, duplicate, etc.)
+    const isSpecialRemark = lowerRemark.includes('cancel') || lowerRemark.includes('cancle') || lowerRemark.includes('cancled') || lowerRemark.includes('cancelled') ||
+                           lowerRemark.includes('postpone') || lowerRemark.includes('postponed') ||
+                           lowerRemark.includes('change') || lowerRemark.includes('changed') || lowerRemark.includes('chage') || lowerRemark.includes('chaged') ||
+                           lowerRemark.includes('double') || lowerRemark.includes('dup');
+
+    if (isRowWhite) {
+      if (isSpecialRemark && remarkVal.toString().trim()) {
+        let icon = '';
+        let badgeText = '';
+        let badgeBg = 'var(--red-bg)';
+        let badgeColor = 'var(--red)';
+        let badgeBorder = 'rgba(248,81,73,0.3)';
+
+        if (lowerRemark.includes('cancel') || lowerRemark.includes('cancle') || lowerRemark.includes('cancled') || lowerRemark.includes('cancelled')) {
+          icon = '❌ ';
+          badgeText = '❌ Cancelled';
+        } else if (lowerRemark.includes('postpone') || lowerRemark.includes('postponed')) {
+          icon = '⏳ ';
+          badgeText = '⏳ Postponed';
+        } else if (lowerRemark.includes('change') || lowerRemark.includes('changed') || lowerRemark.includes('chage') || lowerRemark.includes('chaged')) {
+          icon = '🔄 ';
+          badgeText = '🔄 Changed';
+        } else if (lowerRemark.includes('double') || lowerRemark.includes('dup')) {
+          icon = '⚠️ ';
+          badgeText = '⚠️ Double Code';
+        }
+
+        if (badgeText) {
+          remarkBadge = `<span class="type-badge" style="background:${badgeBg};color:${badgeColor};border:1px solid ${badgeBorder};text-transform:none;margin-left:4px;display:inline-flex;align-items:center;gap:4px">${badgeText}</span>`;
+        }
+        titleRemarkInfo = ` • ${icon}${remarkVal.toString().trim()}`;
+      }
+    }
+
     const cardTitle = name 
-      ? `${name}${code ? ` (${code})` : ''}${checkIn ? ` • In: ${checkIn}` : ''}${room && room !== '—' ? ` • 🚪 ${room}` : ''}` 
+      ? `${name}${code ? ` (${code})` : ''}${checkIn ? ` • In: ${checkIn}` : ''}${room && room !== '—' ? ` • 🚪 ${room}` : ''}${titleRemarkInfo}` 
       : (rowData[0] || '—');
     const typeLabel = item.type === 'new' ? 'NEW ROW' : 'MODIFIED';
     const cardClass = item.type === 'new' ? 'new-row' : 'modified';
@@ -1319,11 +1365,12 @@
     }
 
     return `
-      <div class="change-card ${cardClass}" id="${id}">
+      <div class="change-card ${cardClass}" id="${id}" style="${rowColor !== 'WHITE' ? `border-left: 3px solid ${rowColor} !important;` : ''}">
         <div class="card-header" onclick="toggleCard('${id}')">
           <div class="card-left">
             <span class="type-badge ${badgeClass}">${typeLabel}</span>
             <span class="card-title">${escapeHtml(String(cardTitle))}</span>
+            ${remarkBadge}
           </div>
           <div style="display:flex;align-items:center;gap:12px">
             <span class="card-time">${formatTime(item.checkedAt)}</span>
@@ -1347,14 +1394,62 @@
     const checkIn = rowData[7] || '—';
     const checkOut = rowData[8] || '—';
 
-    // Find ROOM, ROOM_PAX and REMARK indices dynamically from bookingsHeaders
+    // Find ROOM, ROOM_PAX, ROW_COLOR and REMARK indices dynamically from bookingsHeaders
     const roomIndex = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM');
     const roomPaxIndex = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM_PAX');
+    const colorIndex = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROW_COLOR');
     const remarkIndex = bookingsHeaders.findIndex(h => h && ['REMARK', 'REMARKS'].includes(h.toString().trim().toUpperCase()));
     
     const roomVal = roomIndex !== -1 ? (rowData[roomIndex] || '—') : '—';
     const roomPaxVal = roomPaxIndex !== -1 ? (rowData[roomPaxIndex] || '—') : '—';
+    const rowColor = colorIndex !== -1 ? (rowData[colorIndex] || 'WHITE') : 'WHITE';
     const remarkVal = remarkIndex !== -1 ? (rowData[remarkIndex] || '') : (rowData[22] || '');
+
+    // Determine status badge and border styling based on remark keywords and row color
+    let remarkBadge = '';
+    let cardLeftBorder = 'var(--accent)';
+    let titleRemarkInfo = '';
+
+    const isRowWhite = (rowColor === 'WHITE');
+    const lowerRemark = remarkVal.toLowerCase();
+
+    // Special remark check (cancel, postpone, double code, duplicate, etc.)
+    const isSpecialRemark = lowerRemark.includes('cancel') || lowerRemark.includes('cancle') || lowerRemark.includes('cancled') || lowerRemark.includes('cancelled') ||
+                           lowerRemark.includes('postpone') || lowerRemark.includes('postponed') ||
+                           lowerRemark.includes('change') || lowerRemark.includes('changed') || lowerRemark.includes('chage') || lowerRemark.includes('chaged') ||
+                           lowerRemark.includes('double') || lowerRemark.includes('dup');
+
+    if (isRowWhite) {
+      if (isSpecialRemark && remarkVal.toString().trim()) {
+        let icon = '';
+        let badgeText = '';
+        let badgeBg = 'var(--red-bg)';
+        let badgeColor = 'var(--red)';
+        let badgeBorder = 'rgba(248,81,73,0.3)';
+
+        if (lowerRemark.includes('cancel') || lowerRemark.includes('cancle') || lowerRemark.includes('cancled') || lowerRemark.includes('cancelled')) {
+          icon = '❌ ';
+          badgeText = '❌ Cancelled';
+        } else if (lowerRemark.includes('postpone') || lowerRemark.includes('postponed')) {
+          icon = '⏳ ';
+          badgeText = '⏳ Postponed';
+        } else if (lowerRemark.includes('change') || lowerRemark.includes('changed') || lowerRemark.includes('chage') || lowerRemark.includes('chaged')) {
+          icon = '🔄 ';
+          badgeText = '🔄 Changed';
+        } else if (lowerRemark.includes('double') || lowerRemark.includes('dup')) {
+          icon = '⚠️ ';
+          badgeText = '⚠️ Double Code';
+        }
+
+        if (badgeText) {
+          remarkBadge = `<span class="type-badge" style="background:${badgeBg};color:${badgeColor};border:1px solid ${badgeBorder};text-transform:none;margin-left:4px;display:inline-flex;align-items:center;gap:4px">${badgeText}</span>`;
+        }
+        titleRemarkInfo = `<span style="font-size:0.85rem;color:var(--text-secondary);font-weight:normal;margin-left:8px">${icon}• ${escapeHtml(remarkVal.toString().trim())}</span>`;
+      }
+    } else {
+      // Row is colored. We ignore the remark and use the sheet color directly.
+      cardLeftBorder = rowColor;
+    }
 
     // Fields requested by user to display in detail table
     const fields = [
@@ -1386,13 +1481,14 @@
       .join('');
 
     return `
-      <div class="change-card" id="${id}" style="border-left: 3px solid var(--accent)">
+      <div class="change-card" id="${id}" style="border-left: 3px solid ${cardLeftBorder}">
         <div class="card-header" onclick="toggleCard('${id}')">
           <div class="card-left">
             <span class="type-badge" style="background:var(--accent-glow);color:var(--accent);border:1px solid rgba(88,166,255,0.3)">${escapeHtml(String(code))}</span>
-            <span class="card-title">${escapeHtml(String(name))}</span>
+            <span class="card-title">${escapeHtml(String(name))}${titleRemarkInfo}</span>
             <span style="font-size:0.75rem;color:var(--text-muted)">(${escapeHtml(String(pic))})</span>
             ${roomVal && roomVal !== '—' ? `<span class="type-badge" style="background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(210,153,34,0.3);text-transform:none;margin-left:4px;display:inline-flex;align-items:center;gap:4px">🚪 Room: ${escapeHtml(String(roomVal))} (${escapeHtml(String(roomPaxVal || '—'))} Pax)</span>` : ''}
+            ${remarkBadge}
           </div>
           <div style="display:flex;align-items:center;gap:12px">
             <span class="card-time" style="color:var(--text-secondary)">${escapeHtml(String(checkIn))} → ${escapeHtml(String(checkOut))}</span>

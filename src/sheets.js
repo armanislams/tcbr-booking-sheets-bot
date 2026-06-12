@@ -42,8 +42,27 @@ function getAuthClient() {
 }
 
 /**
- * Fetches all rows from the first sheet tab in the configured Google Sheet.
- * Returns an array of arrays (raw row data).
+ * Helper to determine standard RGB CSS color of a cell background.
+ * Returns 'WHITE' if the color is default or white, otherwise returns standard rgb CSS string.
+ */
+function getCellColor(color) {
+  if (!color) return 'WHITE';
+  const r = color.red !== undefined ? color.red : 0;
+  const g = color.green !== undefined ? color.green : 0;
+  const b = color.blue !== undefined ? color.blue : 0;
+  if (r >= 0.99 && g >= 0.99 && b >= 0.99) {
+    return 'WHITE';
+  }
+  const R = Math.round(r * 255);
+  const G = Math.round(g * 255);
+  const B = Math.round(b * 255);
+  return `rgb(${R},${G},${B})`;
+}
+
+/**
+ * Fetches all rows from the first sheet tab in the configured Google Sheet,
+ * including cell background colors to determine highlight status.
+ * Returns an array of arrays (raw row data with color status appended as the last element).
  */
 async function fetchSheetData() {
   const sheetId = process.env.GOOGLE_SHEET_ID;
@@ -66,16 +85,59 @@ async function fetchSheetData() {
   const firstSheetName = metaResponse.data.sheets[0].properties.title;
   console.log(`   📋 Reading tab: "${firstSheetName}"`);
 
-  // ── Fetch all data (no fixed range — expands with data) ────────────────────
+  // ── Fetch grid data (values and formatting) ────────────────────────────────
   const range = encodeURIComponent(firstSheetName);
-  const dataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?valueRenderOption=FORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING`;
+  const dataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?ranges=${range}&includeGridData=true&fields=sheets(data(rowData(values(effectiveFormat(backgroundColor),formattedValue))))`;
   const dataResponse = await client.request({ url: dataUrl });
 
-  if (!dataResponse || !dataResponse.data) {
-    throw new Error('Could not retrieve sheet values.');
+  if (!dataResponse || !dataResponse.data || !dataResponse.data.sheets || dataResponse.data.sheets.length === 0) {
+    throw new Error('Could not retrieve sheet values and formatting.');
   }
 
-  const rows = dataResponse.data.values || [];
+  const sheet = dataResponse.data.sheets[0];
+  const rowData = (sheet.data && sheet.data[0] && sheet.data[0].rowData) || [];
+
+  // Find max columns across all rows to establish a standard width
+  let maxCols = 0;
+  for (const row of rowData) {
+    if (row && row.values) {
+      if (row.values.length > maxCols) {
+        maxCols = row.values.length;
+      }
+    }
+  }
+  if (maxCols < 4) {
+    maxCols = 4; // Ensure we have at least columns up to index 3 (NAME)
+  }
+
+  // Map each row, padding empty cells and appending the color state
+  const rows = [];
+  for (const row of rowData) {
+    const rowValues = [];
+    let nameColor = null;
+
+    if (row && row.values) {
+      for (let c = 0; c < maxCols; c++) {
+        const cell = row.values[c];
+        const val = cell ? (cell.formattedValue || '') : '';
+        rowValues.push(val);
+
+        if (c === 3 && cell) {
+          const format = cell.effectiveFormat;
+          nameColor = format ? format.backgroundColor : null;
+        }
+      }
+    } else {
+      for (let c = 0; c < maxCols; c++) {
+        rowValues.push('');
+      }
+    }
+
+    const cellColor = getCellColor(nameColor);
+    rowValues.push(cellColor);
+    rows.push(rowValues);
+  }
+
   return rows;
 }
 

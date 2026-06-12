@@ -66,6 +66,10 @@ async function runCheck() {
     // 4. Enrich rows with ROOM and ROOM_PAX columns
     if (headerIndex !== -1) {
       const headers = rows[headerIndex];
+      if (headers && headers.length > 0) {
+        headers[headers.length - 1] = 'ROW_COLOR';
+      }
+
       const codeIndex = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'CODE');
       const checkInIndex = headers.findIndex(h => h && ['CHECK IN', 'CHECK-IN', 'CHECKIN'].includes(h.toString().trim().toUpperCase()));
       
@@ -74,7 +78,7 @@ async function runCheck() {
 
       for (let i = headerIndex + 1; i < rows.length; i++) {
         const row = rows[i];
-        if (!row || row.every(cell => !cell || cell.toString().trim() === '')) {
+        if (!row || row.slice(0, -1).every(cell => !cell || cell.toString().trim() === '')) {
           continue;
         }
 

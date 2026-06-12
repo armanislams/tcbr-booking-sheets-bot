@@ -38,6 +38,12 @@ async function sendMessage(text, replyMarkup = null) {
   }
 }
 
+const EXCLUDED_HEADERS = [
+  'ROW_COLOR', 'ROOM', 'ROOM_PAX',
+  'TOTAL AMOUNT', 'DEPOSIT', 'BALANCE', 'STATUS',
+  'ROOM TYPE', 'STAYING DAYS', 'SHARING', 'ROOM SHARING'
+];
+
 /**
  * Format a row's data as a compact HTML list using headers.
  */
@@ -46,6 +52,8 @@ function formatRow(row, headers) {
     .map((header, i) => {
       const val = (row[i] || '').toString().trim();
       if (!val) return null;
+      const headerUpper = header.toUpperCase().trim();
+      if (EXCLUDED_HEADERS.includes(headerUpper)) return null;
       return `  • <b>${escapeHtml(header)}:</b> ${escapeHtml(val)}`;
     })
     .filter(Boolean)
@@ -61,6 +69,8 @@ function formatModifiedRow(row, headers, changes) {
     .map((header, i) => {
       const val = (row[i] || '').toString().trim();
       if (!val) return null;
+      const headerUpper = header.toUpperCase().trim();
+      if (EXCLUDED_HEADERS.includes(headerUpper)) return null;
       const isChanged = changedColumns.has(header);
       const marker = isChanged ? ' 🟡 (changed)' : '';
       return `  • <b>${escapeHtml(header)}${marker}:</b> ${escapeHtml(val)}`;
@@ -125,18 +135,24 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
   if (modifiedRows.length > 0) {
     parts.push(`\n\n🟡 <b>${modifiedRows.length} Modified Row(s) This Month:</b>`);
     for (const entry of modifiedRows.slice(0, 10)) {
-      const fullRowText = formatModifiedRow(entry.row, entry.headers, entry.changes);
-      const changesText = entry.changes
+      const filteredChanges = entry.changes.filter(c => !EXCLUDED_HEADERS.includes(c.column.toUpperCase().trim()));
+      const fullRowText = formatModifiedRow(entry.row, entry.headers, filteredChanges);
+      
+      const changesText = filteredChanges
         .map(c =>
           `  • <b>${escapeHtml(c.column)}:</b>\n` +
           `    ❌ Was: ${escapeHtml(c.before) || '(empty)'}\n` +
           `    ✅ Now: ${escapeHtml(c.after)  || '(empty)'}`
         )
         .join('\n');
+
+      const changesSection = changesText
+        ? `\n\n<b>⚡ What Changed:</b>\n${changesText}`
+        : '';
+
       parts.push(
         `\n━━━━━━━━━━━━━━━\n` +
-        `<b>📋 Full Row Data:</b>\n${fullRowText}\n\n` +
-        `<b>⚡ What Changed:</b>\n${changesText}`
+        `<b>📋 Full Row Data:</b>\n${fullRowText}${changesSection}`
       );
     }
     if (modifiedRows.length > 10) {
