@@ -2,7 +2,7 @@
 
 A robust, production-grade Node.js service that monitors a Google Sheet on a schedule, detects new or modified rows, triggers detailed HTML alerts on Telegram, and hosts a beautiful real-time Web Dashboard.
 
-Designed for reliability and cloud persistence, the bot automatically handles network disconnects, tracks downtime recovery, splits long messages, and supports dual storage modes (Local JSON files or MongoDB).
+Designed for reliability, speed, and cloud persistence, the bot automatically handles network disconnects, tracks downtime recovery, splits long messages, supports dual storage modes (Local JSON files or MongoDB), and is fully optimized for containerized environments.
 
 ---
 
@@ -13,21 +13,27 @@ Designed for reliability and cloud persistence, the bot automatically handles ne
   - **Modified Row Tracking**: Detects cell-by-cell modifications in existing bookings, highlighting exactly what changed.
   - **Auto-Header Detection**: Dynamically scans the first 10 rows of the sheet to locate the header row (identifying it by the cell `'CODE'`), failing back gracefully to the first row if not found.
   - **Flexible Date Parsing**: Recognizes common date formats (e.g., `dd/mm/yyyy`, `yyyy-mm-dd`) as well as textual entries with ordinal suffixes and minor typos (e.g., `"20th March"`, `"2nd June"`, `"24thJuly"`, `"17th Marcj"`).
-- 📱 **Rich Telegram Alerts**:
-  - **New Bookings**: Sends a structured HTML list detailing all columns of the new row.
-  - **Modified Bookings**: Sends the full row data with modified fields highlighted by a `🟡 (changed)` badge alongside a dedicated **What Changed** comparison block.
-  - **Downtime Recovery Alert**: If the bot is offline or inactive for more than 10 minutes, it calculates the downtime duration and includes a reconnection report when it boots back up.
-  - **Payload Protection**: Automatically splits notifications exceeding Telegram's 4096-character limit into multiple sequentially delivered chunks.
-  - **Error Alerts**: Direct notification of sheet access issues or database errors.
+- 🪶 **Lightweight & High Performance**:
+  - **Minimal Dependencies**: Replaced the bulky `googleapis` client with `google-auth-library` and direct REST API calls, and replaced `axios` with Node.js native `fetch` API. This reduces the `node_modules` size by **~70MB+** and drastically speeds up container build and deploy times on Render.
+  - **In-Memory Cache**: Uses a 5-minute TTL cache for dashboard queries, keeping database read overhead minimal.
+- 📱 **Interactive Telegram Bot**:
+  - **Rich Alerts**: Sends detailed HTML summaries of new rows and cell-by-cell modification logs.
+  - **Interactive Commands**: The bot polls in the background for private or group chat commands:
+    - `/help` — List all available commands.
+    - `/status` — View uptime, database connection status, and last check timestamp.
+    - `/summary` — Get a numbered summary of the current month's bookings directly in chat.
+    - `/check` — Trigger a manual check of the Google Sheet immediately.
+  - **Inline Acknowledgements**: Every change alert includes an inline **Acknowledge** button. Clicking it updates the alert to show `✅ Acknowledged by @username` and removes the button.
+  - **Error Alert Snoozing (Spam Prevention)**: If a persistent error occurs (e.g. invalid credentials or sheet locked), the bot alerts Telegram once and then snoozes duplicate error alerts (default: 6 hours) to prevent spamming your chat.
 - 🌐 **Real-Time Web Dashboard**:
-  - **Change Log Tab**: A comprehensive visual audit trail of all check events, rows added, columns modified, and error logs with expandable cards and custom status badges.
-  - **Current Month Bookings Tab**: Interactive table displaying all active bookings for the current month.
+  - **Manual Trigger**: Click **"Run Check Now"** in the header to execute a check immediately and update the dashboard with dynamic toast notifications.
+  - **Change Log Tab**: A comprehensive visual audit trail of all check events, rows added, columns modified, and error logs with expandable cards, customized titles (showing customer name and booking code), and **Acknowledge Alert** badges/buttons.
+  - **Active Bookings Tab**: Interactive table displaying all active bookings for the current month.
   - **All Bookings Tab**: Displays every recorded booking from the Google Sheet snapshot with a **Month Filter** dropdown to view entries for specific months.
-  - **High Performance**: Features a debounced real-time search bar, date filters (filter by Check-In or Check-Out dates), database status badges, and lazy rendering client-side pagination to handle thousands of rows with zero lag.
+  - **Lazy Rendering Pagination**: High-performance lazy rendering client-side pagination to handle thousands of rows with zero lag.
 - 💾 **Dual Storage & Persistence**:
   - **Local Fallback Mode**: Persists snapshots and change history to local JSON files (`data/snapshot.json` and `data/change_history.json`).
   - **MongoDB Production Mode**: Automatically switches to MongoDB for database persistence if a connection URI is provided. Essential for serverless or container environments (like Render) with ephemeral local filesystems.
-  - **In-Memory Cache**: Uses a 30-second TTL cache for snapshots and history loading, reducing database/disk overhead during high dashboard traffic.
 
 ---
 
@@ -40,13 +46,14 @@ sheets-bot/
 ├── render.yaml             # Render.com infrastructure blueprint
 ├── .env.example            # Environment variables configuration template
 ├── src/
-│   ├── sheets.js           # Google Sheets API connection and raw data fetcher
+│   ├── sheets.js           # Google Sheets API REST connection and raw data fetcher
 │   ├── detector.js         # Date parsing, header detection, and diff logic
-│   ├── telegram.js         # Telegram HTML message builders and chunk sender
-│   ├── snapshot.js         # Storage controller (Local JSON / MongoDB, caching)
-│   └── dashboard.js        # Express API server hosting dashboard endpoints
+│   ├── telegram.js         # Telegram HTML message builders
+│   ├── telegramListener.js # Telegram command updates receiver and callback processor
+│   ├── snapshot.js         # Storage controller (Local JSON / MongoDB, caching, acknowledgements)
+│   └── dashboard.js        # Express API server hosting dashboard and trigger endpoints
 ├── public/
-│   └── index.html          # Single-page real-time HTML/CSS/JS web dashboard
+│   └── index.html          # Single-page CSS/JS web dashboard
 └── data/                   # Git-ignored local snapshot backup folder
     ├── snapshot.json       # Baseline local snapshot (Local Fallback Mode)
     └── change_history.json # Local change history ledger (Local Fallback Mode)
@@ -64,10 +71,11 @@ The bot is configured using environment variables. Copy `.env.example` to `.env`
 | `GOOGLE_SERVICE_ACCOUNT_KEY` | *Optional* | Local relative path to your service account JSON file (defaults to `./service-account.json`). |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | *Optional* | The raw stringified JSON content of your Google Service Account key (preferred for cloud services). |
 | `TELEGRAM_BOT_TOKEN` | **Yes** | Your Telegram Bot token obtained from `@BotFather`. |
-| `TELEGRAM_CHAT_ID` | **Yes** | The Telegram chat or channel ID where notifications should be posted. |
+| `TELEGRAM_CHAT_ID` | **Yes** | The Telegram chat or channel ID where booking alerts should be posted. |
 | `CHECK_INTERVAL_CRON` | No | Cron expression specifying check interval (defaults to hourly: `0 * * * *`). |
 | `DASHBOARD_PORT` | No | The port the Express Dashboard server listens on (defaults to `3000`). |
 | `MONGODB_URI` | No | MongoDB connection string (e.g. Atlas). Enables **MongoDB Production Mode**. |
+| `ERROR_ALERT_SNOOZE_HOURS` | No | Hours to snooze duplicate Telegram error alerts (defaults to `6`). |
 
 ---
 
@@ -92,11 +100,12 @@ To read your Google Sheet programmatically:
 9. Open your Google Sheet in a browser, click the **Share** button (top right), paste the Service Account email, set its permission to **Viewer**, and click **Share**.
 
 ### Step 3: Set up Telegram Bot
-To receive real-time notifications on Telegram:
+To receive notifications and run interactive commands:
 1. Contact `@BotFather` on Telegram and send the `/newbot` command.
 2. Follow the prompts to name your bot and copy the API token (e.g., `8639701436:AA...`).
 3. Create a Telegram Channel or Group, add your bot as an Administrator, and write a test message.
 4. Retrieve your chat ID. You can send a message in the channel and query `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates` to find the `"chat":{"id": -100xxxxxxxxxx}` property.
+5. Search for your bot name directly and click **Start** (or send `/start`) to initiate a private chat so you can run commands privately.
 
 ### Step 4: Set up MongoDB (Recommended for Production)
 For production deployments like Render, local filesystems are ephemeral (recreated on every restart/deploy). To keep your snapshot data and change history persistent:
@@ -142,6 +151,7 @@ This repository contains a `render.yaml` configuration that allows you to deploy
    - `GOOGLE_SERVICE_ACCOUNT_JSON` (Paste the *entire contents* of your `service-account.json` file as a single text string)
    - `CHECK_INTERVAL_CRON` (e.g., `0 * * * *` for hourly check)
    - `DASHBOARD_PORT` (Render uses `10000`)
+   - `ERROR_ALERT_SNOOZE_HOURS` (e.g., `6`)
 6. Deploy the service.
 
 ### ⚠️ Keeping the Render Free Plan Awake
@@ -158,25 +168,20 @@ To keep your bot active 24/7 for free:
 
 ## 📡 API Endpoints
 
-The Express server exposes the following JSON endpoints for integration or custom monitoring:
+The Express server exposes the following JSON endpoints:
 
 - **`GET /api/status`**
   - Returns the bot health, database connection status, the timestamp of the last successful sheet check, and total logged change events.
-  - *Response Schema:*
-    ```json
-    {
-      "status": "running",
-      "lastCheck": "2026-06-11T14:30:21.000Z",
-      "totalEventsLogged": 14,
-      "dbStatus": { "connected": true, "type": "mongodb", "error": null }
-    }
-    ```
 - **`GET /api/history`**
   - Retrieves the list of the last 500 checked events including their detailed row differences.
 - **`GET /api/current-bookings`**
   - Retrieves the snapshot of all active bookings for the current month.
 - **`GET /api/all-bookings`**
   - Retrieves the snapshot of all bookings currently present in the Google Sheet (excluding blank lines).
+- **`POST /api/check`**
+  - Triggers a manual check event of the Google Sheet immediately.
+- **`POST /api/history/acknowledge`**
+  - Acknowledges a logged change event. Accepts JSON: `{ "id": "event-uuid", "user": "Acknowledge Username" }`.
 
 ---
 
