@@ -13,7 +13,7 @@ let isBoot = true;
 // ─── Run check job ──────────────────────────────────────────────────────────
 async function runCheck() {
   const now = new Date();
-  console.log(`\n[${now.toLocaleString()}] ⏱  Running scheduled check...`);
+  console.log(`\n[${now.toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' })}] ⏱  Running scheduled check...`);
 
   try {
     // 1. Fetch latest data from Google Sheet
@@ -39,7 +39,7 @@ async function runCheck() {
         offlineInfo = {
           wasOffline: true,
           duration: durationText,
-          lastActive: lastCheckTime.toLocaleString()
+          lastActive: lastCheckTime.toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' })
         };
         console.log(`   ℹ️  Bot is back online! Was offline/inactive for ${durationText} (Last check was at ${offlineInfo.lastActive})`);
       }

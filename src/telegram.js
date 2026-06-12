@@ -33,6 +33,7 @@ function formatRow(row, headers) {
       return `  • <b>${escapeHtml(header)}:</b> ${escapeHtml(val)}`;
     })
     .filter(Boolean)
+    .join('\n');
 }
 
 /**
@@ -64,8 +65,8 @@ function escapeHtml(str) {
  */
 async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null, checkedAt, offlineInfo }) {
   const now = checkedAt || new Date();
-  const monthName = now.toLocaleString('default', { month: 'long', year: 'numeric' });
-  const timestamp = now.toLocaleString();
+  const monthName = now.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur' });
+  const timestamp = now.toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' });
 
   // ── Error notification ──────────────────────────────────────────────────
   if (error) {
