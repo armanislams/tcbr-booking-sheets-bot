@@ -698,6 +698,22 @@
     if (event) event.stopPropagation();
     if (!eventId) return;
     
+    // Retrieve the last used name, if any
+    const savedName = localStorage.getItem('ack_username') || '';
+    
+    // Prompt the user for their name (pre-filled with the last used name)
+    const username = prompt("Please enter your name for acknowledgment:", savedName);
+    
+    // If the user cancels the prompt, abort the acknowledgment
+    if (username === null) return;
+    
+    const finalUsername = username.trim() || 'Dashboard User';
+    
+    // Save the name for future acknowledgments
+    if (username.trim()) {
+      localStorage.setItem('ack_username', finalUsername);
+    }
+    
     buttonEl.disabled = true;
     const originalText = buttonEl.textContent;
     buttonEl.textContent = 'Acknowledging...';
@@ -706,7 +722,7 @@
       const res = await fetch('/api/history/acknowledge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: eventId, user: 'Dashboard User', category })
+        body: JSON.stringify({ id: eventId, user: finalUsername, category })
       });
       
       if (res.ok) {
