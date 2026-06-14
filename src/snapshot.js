@@ -102,7 +102,7 @@ async function loadSnapshot() {
  * @param {Array[]} allRows        - Full sheet data
  * @param {Array}   currentMonthRows - Rows matching this month
  */
-async function saveSnapshot(allRows, currentMonthRows) {
+async function saveSnapshot(allRows, currentMonthRows, sentReminders = {}) {
   const headerIndex = findHeaderRowIndex(allRows);
   const headers = allRows[headerIndex] || [];
 
@@ -126,6 +126,7 @@ async function saveSnapshot(allRows, currentMonthRows) {
     headers, // Keep the headers saved in snapshot for current bookings endpoint
     monthMap: {},
     allRows: allRowsData, // Save all rows data for the "All Bookings" tab
+    sentReminders,
   };
 
   for (const entry of currentMonthRows) {

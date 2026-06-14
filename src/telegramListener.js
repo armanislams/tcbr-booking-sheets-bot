@@ -34,9 +34,10 @@ async function handleTelegramUpdate(update) {
   if (!BOT_TOKEN) return;
 
   // ── 1. Handle Bot Commands ────────────────────────────────────────────────
-  if (update.message && update.message.text) {
-    const text = update.message.text.trim();
-    const chatId = update.message.chat.id;
+  const message = update.message || update.channel_post;
+  if (message && message.text) {
+    const text = message.text.trim();
+    const chatId = message.chat.id;
 
     if (text.startsWith('/')) {
       const command = text.split(' ')[0].split('@')[0].toLowerCase();
@@ -47,6 +48,7 @@ async function handleTelegramUpdate(update) {
           `• <b>/status</b> - Get database, uptime, and check status.\n` +
           `• <b>/summary</b> - List current month bookings.\n` +
           `• <b>/check</b> - Trigger a manual sheet check right now.\n` +
+          `• <b>/remind</b> - Trigger manual check and send 30-day reminders.\n` +
           `• <b>/help</b> - View this menu.`;
         await sendDirectMessage(chatId, helpMsg);
       }
@@ -71,10 +73,24 @@ async function handleTelegramUpdate(update) {
         await sendDirectMessage(chatId, '⏱ <b>Triggering manual check...</b>');
         if (runCheckCallback) {
           try {
-            await runCheckCallback();
+            await runCheckCallback(false);
             await sendDirectMessage(chatId, '✅ <b>Check completed successfully!</b> Check dashboard or notifications for changes.');
           } catch (err) {
             await sendDirectMessage(chatId, `❌ <b>Error during check:</b> ${err.message}`);
+          }
+        } else {
+          await sendDirectMessage(chatId, '❌ <b>Error:</b> Manual check trigger is not registered on the server.');
+        }
+      }
+
+      else if (command === '/remind') {
+        await sendDirectMessage(chatId, '⏱ <b>Triggering manual reminders check...</b>');
+        if (runCheckCallback) {
+          try {
+            await runCheckCallback(true);
+            await sendDirectMessage(chatId, '✅ <b>Reminders check completed successfully!</b> Check reminder channel for alerts.');
+          } catch (err) {
+            await sendDirectMessage(chatId, `❌ <b>Error during reminder check:</b> ${err.message}`);
           }
         } else {
           await sendDirectMessage(chatId, '❌ <b>Error:</b> Manual check trigger is not registered on the server.');

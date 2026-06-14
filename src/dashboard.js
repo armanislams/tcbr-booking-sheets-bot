@@ -73,7 +73,7 @@ app.get('/api/all-bookings', async (req, res) => {
 app.post('/api/check', async (req, res) => {
   try {
     if (runCheckCallback) {
-      await runCheckCallback();
+      await runCheckCallback(false);
       res.json({ success: true, message: 'Sheet check completed successfully.' });
     } else {
       res.status(500).json({ error: 'Check trigger callback not registered on the server.' });

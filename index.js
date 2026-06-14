@@ -7,6 +7,7 @@ const { fetchSheetData, fetchRoomMap } = require('./src/sheets');
 const { detectChanges, findHeaderRowIndex, parseDate, getMonthNameFromText, getStayDays } = require('./src/detector');
 const { sendTelegramAlert } = require('./src/telegram');
 const { loadSnapshot, saveSnapshot, appendHistory } = require('./src/snapshot');
+const { checkAndSend30DayReminders } = require('./src/reminders');
 
 console.log('🤖 Sheets Monitor Bot starting...');
 
@@ -17,7 +18,7 @@ let lastErrorAlertTime = 0;
 let lastErrorMessage = '';
 
 // ─── Run check job ──────────────────────────────────────────────────────────
-async function runCheck() {
+async function runCheck(forceReminders = false) {
   const now = new Date();
   console.log(`\n[${now.toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' })}] ⏱  Running check...`);
   
@@ -206,6 +207,16 @@ async function runCheck() {
     const previousSnapshot = await loadSnapshot();
     const isInitialRun = !previousSnapshot;
 
+    let sentReminders = previousSnapshot?.sentReminders || {};
+    if (forceReminders) {
+      try {
+        const remindersResult = await checkAndSend30DayReminders(rows, previousSnapshot);
+        sentReminders = remindersResult.sentReminders;
+      } catch (reminderErr) {
+        throw new Error(`Reminder check failed: ${reminderErr.message}`);
+      }
+    }
+
     let offlineInfo = null;
     if (isBoot && previousSnapshot && previousSnapshot.savedAt) {
       const lastCheckTime = new Date(previousSnapshot.savedAt);
@@ -259,7 +270,7 @@ async function runCheck() {
     });
 
     // 6. Save new snapshot
-    await saveSnapshot(rows, currentMonthRows);
+    await saveSnapshot(rows, currentMonthRows, sentReminders);
 
     // Reset error alerts state on success
     lastErrorAlertTime = 0;
@@ -305,7 +316,16 @@ runCheck();
 // ─── Schedule recurring checks ──────────────────────────────────────────────
 const cronExpression = process.env.CHECK_INTERVAL_CRON || '0 * * * *';
 console.log(`\n📆 Scheduler set: "${cronExpression}"`);
-cron.schedule(cronExpression, runCheck);
+cron.schedule(cronExpression, () => runCheck(false));
+
+// Daily 30-day reminders at 10:00 AM Kuala Lumpur time
+console.log('📆 Daily 10:00 AM KL reminder job scheduled');
+cron.schedule('0 10 * * *', async () => {
+  console.log('\n⏰ [10:00 AM KL] Running daily 30-day reminders job...');
+  await runCheck(true);
+}, {
+  timezone: 'Asia/Kuala_Lumpur'
+});
 
 console.log('🌐 Dashboard: http://localhost:' + (process.env.DASHBOARD_PORT || 3000));
 console.log('👋 Bot is running. Press Ctrl+C to stop.\n');

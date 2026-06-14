@@ -6,15 +6,15 @@ const CHAT_ID   = process.env.TELEGRAM_CHAT_ID;
  * @param {string} text - The message text (supports Telegram HTML formatting)
  * @param {object} replyMarkup - Optional Telegram reply_markup (e.g. inline keyboard)
  */
-async function sendMessage(text, replyMarkup = null) {
-  if (!BOT_TOKEN || !CHAT_ID) {
+async function sendMessage(text, replyMarkup = null, targetChatId = CHAT_ID) {
+  if (!BOT_TOKEN || !targetChatId) {
     console.warn('   ⚠️  Telegram not configured. Skipping notification.');
     return;
   }
 
   const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
   const requestBody = {
-    chat_id: CHAT_ID,
+    chat_id: targetChatId,
     text,
     parse_mode: 'HTML',
     disable_web_page_preview: true,
@@ -200,4 +200,4 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
   }
 }
 
-module.exports = { sendTelegramAlert };
+module.exports = { sendTelegramAlert, sendMessage };
