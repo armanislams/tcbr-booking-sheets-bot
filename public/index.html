@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sheets Monitor Bot — Dashboard</title>
   <meta name="description" content="Real-time dashboard for monitoring Google Sheets changes in the current month." />
+  <meta name="theme-color" content="#161b22" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <style>
@@ -555,6 +558,9 @@
     <div class="header-right">
       <span id="db-status-badge" class="type-badge" style="cursor: help; text-transform: none; display: inline-flex; align-items: center; gap: 4px;" title="Checking database...">Database: —</span>
       Last check: <span id="last-check-time">—</span>
+      <button class="refresh-btn" id="install-btn" style="display: none; background: rgba(63,185,80,0.1); color: var(--green); border-color: rgba(63,185,80,0.3); margin-right: 8px;">
+        <span class="refresh-icon">📲</span> Install App
+      </button>
       <button class="refresh-btn" id="trigger-btn" onclick="triggerManualCheck()" style="background: rgba(88,166,255,0.05); color: var(--accent); border-color: rgba(88,166,255,0.2); margin-right: 8px;">
         <span class="refresh-icon">⏱</span> Run Check Now
       </button>
@@ -1555,6 +1561,52 @@
       behavior: 'smooth'
     });
   }
+
+  // ── PWA Installation & Service Worker Registration ─────────────────────────
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then((reg) => console.log('Service Worker registered successfully:', reg.scope))
+        .catch((err) => console.error('Service Worker registration failed:', err));
+    });
+  }
+
+  let deferredPrompt;
+  const installBtn = document.getElementById('install-btn');
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    // Prevent the mini-infobar from appearing on mobile
+    e.preventDefault();
+    // Stash the event so it can be triggered later.
+    deferredPrompt = e;
+    // Update UI notify the user they can install the PWA
+    if (installBtn) {
+      installBtn.style.display = 'flex';
+    }
+  });
+
+  if (installBtn) {
+    installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      // Show the install prompt
+      deferredPrompt.prompt();
+      // Wait for the user to respond to the prompt
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log(`User response to the install prompt: ${outcome}`);
+      // We've used the prompt, and can't use it again
+      deferredPrompt = null;
+      // Hide the install button
+      installBtn.style.display = 'none';
+    });
+  }
+
+  window.addEventListener('appinstalled', (evt) => {
+    console.log('Sheets Monitor Bot app was successfully installed!');
+    if (installBtn) {
+      installBtn.style.display = 'none';
+    }
+    showToast('🎉 App installed successfully!');
+  });
 
   // ── Auto-refresh every 2 minutes ────────────────────────────────────────────
   loadData();
