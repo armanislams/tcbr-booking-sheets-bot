@@ -6,7 +6,7 @@ const { startTelegramListener } = require('./src/telegramListener');
 const { fetchSheetData, fetchRoomMap } = require('./src/sheets');
 const { detectChanges, findHeaderRowIndex, parseDate, getMonthNameFromText, getStayDays } = require('./src/detector');
 const { sendTelegramAlert } = require('./src/telegram');
-const { loadSnapshot, saveSnapshot, appendHistory } = require('./src/snapshot');
+const { loadSnapshot, saveSnapshot, appendHistory, clearMonthData } = require('./src/snapshot');
 const { checkAndSend30DayReminders } = require('./src/reminders');
 
 console.log('🤖 Sheets Monitor Bot starting...');
@@ -323,6 +323,16 @@ console.log('📆 Daily 10:00 AM KL reminder job scheduled');
 cron.schedule('0 10 * * *', async () => {
   console.log('\n⏰ [10:00 AM KL] Running daily 30-day reminders job...');
   await runCheck(true);
+}, {
+  timezone: 'Asia/Kuala_Lumpur'
+});
+
+// Monthly reset: clear history and snapshot on the 1st of each month at midnight KL time
+console.log('📆 Monthly reset job scheduled (1st of each month at 12:00 AM KL)');
+cron.schedule('0 0 1 * *', async () => {
+  console.log('\n🗑️  [Monthly Reset] Clearing history and snapshot...');
+  await clearMonthData();
+  console.log('   ✅ Monthly reset complete. Next check will establish a new baseline.');
 }, {
   timezone: 'Asia/Kuala_Lumpur'
 });

@@ -280,4 +280,36 @@ async function acknowledgeEvent(eventId, username, category = 'reception') {
   }
 }
 
-module.exports = { loadSnapshot, saveSnapshot, appendHistory, loadHistory, getDbStatus, acknowledgeEvent };
+/**
+ * Clear all change history and snapshot baseline (monthly reset).
+ */
+async function clearMonthData() {
+  // Clear in-memory caches
+  cachedSnapshot = null;
+  lastSnapshotLoadTime = 0;
+  cachedHistory = null;
+  lastHistoryLoadTime = 0;
+
+  const db = await getDb();
+  if (db) {
+    try {
+      await db.collection('history').deleteMany({});
+      await db.collection('snapshots').deleteMany({ type: 'current_baseline' });
+      console.log('   🗑️  MongoDB history and snapshot cleared.');
+      return;
+    } catch (err) {
+      console.error('   ❌ MongoDB clearMonthData error:', err.message);
+    }
+  }
+
+  // Local fallback
+  if (fs.existsSync(HISTORY_FILE)) {
+    fs.writeFileSync(HISTORY_FILE, '[]', 'utf-8');
+  }
+  if (fs.existsSync(SNAPSHOT_FILE)) {
+    fs.unlinkSync(SNAPSHOT_FILE);
+  }
+  console.log('   🗑️  Local history and snapshot cleared.');
+}
+
+module.exports = { loadSnapshot, saveSnapshot, appendHistory, loadHistory, getDbStatus, acknowledgeEvent, clearMonthData };
