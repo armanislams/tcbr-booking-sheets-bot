@@ -1287,7 +1287,7 @@
         .map((h, i) => {
           const val = (rowData[i] || '').toString().trim();
           if (!val) return '';
-          if (['TOTAL AMOUNT', 'DEPOSIT', 'BALANCE', 'STATUS', 'ROW_COLOR', 'ROOM', 'ROOM_PAX'].includes(h.toUpperCase().trim())) return '';
+          if (['TOTAL AMOUNT', 'DEPOSIT', 'BALANCE', 'STATUS', 'ROW_COLOR'].includes(h.toUpperCase().trim())) return '';
           return `<tr><td style="color:var(--text-secondary);width:35%">${escapeHtml(h)}</td><td>${escapeHtml(val)}</td></tr>`;
         })
         .filter(Boolean)
@@ -1304,7 +1304,7 @@
       const changes = (row.changes || []);
       const changesRows = changes
         .map(c => {
-          if (['TOTAL AMOUNT', 'DEPOSIT', 'BALANCE', 'STATUS', 'ROW_COLOR', 'ROOM', 'ROOM_PAX'].includes(c.column.toUpperCase().trim())) return '';
+          if (['TOTAL AMOUNT', 'DEPOSIT', 'BALANCE', 'STATUS', 'ROW_COLOR'].includes(c.column.toUpperCase().trim())) return '';
           return `
             <tr>
               <td style="color:var(--text-secondary);width:30%">${escapeHtml(c.column)}</td>
@@ -1323,7 +1323,7 @@
         .map((h, i) => {
           const val = (rowData[i] || '').toString().trim();
           if (!val) return '';
-          if (['TOTAL AMOUNT', 'DEPOSIT', 'BALANCE', 'STATUS', 'ROW_COLOR', 'ROOM', 'ROOM_PAX'].includes(h.toUpperCase().trim())) return '';
+          if (['TOTAL AMOUNT', 'DEPOSIT', 'BALANCE', 'STATUS', 'ROW_COLOR'].includes(h.toUpperCase().trim())) return '';
           return `<tr><td style="color:var(--text-secondary);width:35%">${escapeHtml(h)}</td><td>${escapeHtml(val)}</td></tr>`;
         })
         .filter(Boolean)

@@ -39,7 +39,7 @@ async function sendMessage(text, replyMarkup = null, targetChatId = CHAT_ID) {
 }
 
 const EXCLUDED_HEADERS = [
-  'ROW_COLOR', 'ROOM', 'ROOM_PAX',
+  'ROW_COLOR',
   'TOTAL AMOUNT', 'DEPOSIT', 'BALANCE', 'STATUS',
   'ROOM TYPE', 'STAYING DAYS', 'SHARING', 'ROOM SHARING'
 ];
