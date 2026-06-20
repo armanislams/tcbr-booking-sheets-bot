@@ -117,7 +117,7 @@ function escapeHtml(str) {
 /**
  * Build and send a Telegram alert summarizing detected changes.
  */
-async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null, checkedAt, offlineInfo, eventId }) {
+async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null, checkedAt, offlineInfo, eventId, chatId }) {
   const now = checkedAt || new Date();
   const monthName = now.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur' });
   const timestamp = now.toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' });
@@ -127,7 +127,9 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
     await sendMessage(
       `🚨 <b>Sheets Bot Error</b>\n` +
       `🕐 ${timestamp}\n\n` +
-      `❌ ${escapeHtml(error)}`
+      `❌ ${escapeHtml(error)}`,
+      null,
+      chatId
     );
     return;
   }
@@ -209,7 +211,7 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
   // Telegram has a 4096 char limit per message — split if needed
   const LIMIT = 4000;
   if (fullMessage.length <= LIMIT) {
-    await sendMessage(fullMessage, replyMarkup);
+    await sendMessage(fullMessage, replyMarkup, chatId);
   } else {
     // Send in chunks
     let chunk = '';
@@ -217,13 +219,13 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if ((chunk + line + '\n').length > LIMIT) {
-        await sendMessage(chunk);
+        await sendMessage(chunk, null, chatId);
         chunk = '';
       }
       chunk += line + '\n';
     }
     if (chunk.trim()) {
-      await sendMessage(chunk, replyMarkup);
+      await sendMessage(chunk, replyMarkup, chatId);
     }
   }
 }
