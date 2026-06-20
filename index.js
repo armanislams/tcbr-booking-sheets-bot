@@ -8,6 +8,7 @@ const { detectChanges, findHeaderRowIndex, parseDate, getMonthNameFromText, getS
 const { sendTelegramAlert } = require('./src/telegram');
 const { loadSnapshot, saveSnapshot, appendHistory, clearMonthData } = require('./src/snapshot');
 const { checkAndSend30DayReminders } = require('./src/reminders');
+const { sendWeeklyReport, affectsReportWindow, getChangedDates } = require('./src/weeklyReport');
 
 console.log('🤖 Sheets Monitor Bot starting...');
 
@@ -16,6 +17,12 @@ let isBoot = true;
 // Error alert snoozing state
 let lastErrorAlertTime = 0;
 let lastErrorMessage = '';
+
+// Weekly report state
+const REPORT_CHAT_ID = process.env.TELEGRAM_REPORT_CHAT_ID;
+const REPORT_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes cooldown between change-triggered reports
+let lastWeeklyReportTime = 0;
+let lastReportMessages = null; // { headerId, dateMessages: { "YYYY-MM-DD": msgId } }
 
 // ─── Run check job ──────────────────────────────────────────────────────────
 async function runCheck(forceReminders = false) {
@@ -208,6 +215,12 @@ async function runCheck(forceReminders = false) {
     const isInitialRun = !previousSnapshot;
 
     let sentReminders = previousSnapshot?.sentReminders || {};
+    if (previousSnapshot?.lastWeeklyReportTime) {
+      lastWeeklyReportTime = previousSnapshot.lastWeeklyReportTime;
+    }
+    if (previousSnapshot?.lastReportMessages) {
+      lastReportMessages = previousSnapshot.lastReportMessages;
+    }
     if (forceReminders) {
       try {
         const remindersResult = await checkAndSend30DayReminders(rows, previousSnapshot);
@@ -269,8 +282,29 @@ async function runCheck(forceReminders = false) {
       note: isInitialRun ? 'Bot initialized. Established baseline snapshot.' : undefined
     });
 
-    // 6. Save new snapshot
-    await saveSnapshot(rows, currentMonthRows, sentReminders);
+    // 6. Check if changes affect the 10-day report window and send updated report
+    if (REPORT_CHAT_ID && !isInitialRun && (newRows.length > 0 || modifiedRows.length > 0)) {
+      const nowMs = Date.now();
+      const cooldownPassed = (nowMs - lastWeeklyReportTime > REPORT_COOLDOWN_MS);
+
+      if (cooldownPassed && affectsReportWindow(newRows, modifiedRows)) {
+        try {
+          // Determine which specific dates are affected
+          const changedDates = getChangedDates(newRows, modifiedRows);
+          console.log(`   📅 Changed dates in 10-day window: ${changedDates.join(', ')}`);
+
+          const { messages } = await sendWeeklyReport(rows, REPORT_CHAT_ID, 'updated', lastReportMessages, changedDates);
+          lastWeeklyReportTime = nowMs;
+          lastReportMessages = messages;
+          console.log('   ✅ Updated weekly report sent (data changed within 10-day window).');
+        } catch (reportErr) {
+          console.error('   ❌ Failed to send updated weekly report:', reportErr.message);
+        }
+      }
+    }
+
+    // 7. Save new snapshot
+    await saveSnapshot(rows, currentMonthRows, sentReminders, lastWeeklyReportTime, lastReportMessages);
 
     // Reset error alerts state on success
     lastErrorAlertTime = 0;
@@ -336,6 +370,30 @@ cron.schedule('0 0 1 * *', async () => {
 }, {
   timezone: 'Asia/Kuala_Lumpur'
 });
+
+// Weekly 10-day customer report: every Saturday at 9:00 AM KL time
+if (REPORT_CHAT_ID) {
+  console.log('📆 Weekly 10-day report job scheduled (Saturday 9:00 AM KL)');
+  cron.schedule('0 9 * * 6', async () => {
+    console.log('\n📋 [Saturday Report] Generating 10-day customer report...');
+    try {
+      const rows = await fetchSheetData();
+      const { messages } = await sendWeeklyReport(rows, REPORT_CHAT_ID, 'scheduled', lastReportMessages);
+      lastWeeklyReportTime = Date.now();
+      lastReportMessages = messages;
+      // Persist the updated time and message IDs
+      const snapshot = await loadSnapshot();
+      await saveSnapshot(rows, [], snapshot?.sentReminders || {}, lastWeeklyReportTime, lastReportMessages);
+      console.log('   ✅ Saturday report sent successfully.');
+    } catch (err) {
+      console.error('   ❌ Saturday report failed:', err.message);
+    }
+  }, {
+    timezone: 'Asia/Kuala_Lumpur'
+  });
+} else {
+  console.log('⚠️  TELEGRAM_REPORT_CHAT_ID not set. Weekly report job disabled.');
+}
 
 console.log('🌐 Dashboard: http://localhost:' + (process.env.DASHBOARD_PORT || 3000));
 console.log('👋 Bot is running. Press Ctrl+C to stop.\n');

@@ -102,7 +102,7 @@ async function loadSnapshot() {
  * @param {Array[]} allRows        - Full sheet data
  * @param {Array}   currentMonthRows - Rows matching this month
  */
-async function saveSnapshot(allRows, currentMonthRows, sentReminders = {}) {
+async function saveSnapshot(allRows, currentMonthRows, sentReminders = {}, lastWeeklyReportTime = null, lastReportMessages = null) {
   const headerIndex = findHeaderRowIndex(allRows);
   const headers = allRows[headerIndex] || [];
 
@@ -127,6 +127,8 @@ async function saveSnapshot(allRows, currentMonthRows, sentReminders = {}) {
     monthMap: {},
     allRows: allRowsData, // Save all rows data for the "All Bookings" tab
     sentReminders,
+    lastWeeklyReportTime,
+    lastReportMessages, // { headerId, dateMessages: { "YYYY-MM-DD": messageId } }
   };
 
   for (const entry of currentMonthRows) {
@@ -189,6 +191,91 @@ async function appendHistory(event) {
   if (history.length > 500) history = history.slice(0, 500);
 
   fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf-8');
+}
+
+/**
+ * Append a verification to an existing report event in history.
+ * If the event exists, pushes to its verifications array.
+ * If not, creates a new event entry.
+ */
+async function appendVerification(eventId, username) {
+  cachedHistory = null;
+  lastHistoryLoadTime = 0;
+
+  const verification = {
+    by: username,
+    at: new Date().toISOString(),
+  };
+
+  const db = await getDb();
+  if (db) {
+    try {
+      const collection = db.collection('history');
+      const existing = await collection.findOne({ id: eventId });
+      if (existing) {
+        await collection.updateOne(
+          { id: eventId },
+          { $push: { verifications: verification } }
+        );
+      } else {
+        await collection.insertOne({
+          id: eventId,
+          type: 'weekly_report',
+          checkedAt: new Date().toISOString(),
+          verifications: [verification],
+          createdAt: new Date(),
+        });
+      }
+      return;
+    } catch (err) {
+      console.error('   ❌ MongoDB appendVerification error:', err.message);
+    }
+  }
+
+  // Local file fallback
+  let history = [];
+  if (fs.existsSync(HISTORY_FILE)) {
+    try { history = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf-8')); } catch {}
+  }
+
+  const existing = history.find(item => item.id === eventId);
+  if (existing) {
+    if (!existing.verifications) existing.verifications = [];
+    existing.verifications.push(verification);
+  } else {
+    history.unshift({
+      id: eventId,
+      type: 'weekly_report',
+      checkedAt: new Date().toISOString(),
+      verifications: [verification],
+    });
+  }
+
+  if (history.length > 500) history = history.slice(0, 500);
+  fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf-8');
+}
+
+/**
+ * Get all verifications for a report event.
+ */
+async function getVerifications(eventId) {
+  const db = await getDb();
+  if (db) {
+    try {
+      const collection = db.collection('history');
+      const doc = await collection.findOne({ id: eventId });
+      return doc?.verifications || [];
+    } catch (err) {
+      return [];
+    }
+  }
+
+  let history = [];
+  if (fs.existsSync(HISTORY_FILE)) {
+    try { history = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf-8')); } catch {}
+  }
+  const item = history.find(h => h.id === eventId);
+  return item?.verifications || [];
 }
 
 /**
@@ -312,4 +399,4 @@ async function clearMonthData() {
   console.log('   🗑️  Local history and snapshot cleared.');
 }
 
-module.exports = { loadSnapshot, saveSnapshot, appendHistory, loadHistory, getDbStatus, acknowledgeEvent, clearMonthData };
+module.exports = { loadSnapshot, saveSnapshot, appendHistory, appendVerification, getVerifications, loadHistory, getDbStatus, acknowledgeEvent, clearMonthData };

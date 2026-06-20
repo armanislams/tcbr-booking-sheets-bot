@@ -1,4 +1,7 @@
-const { acknowledgeEvent, loadHistory, loadSnapshot, getDbStatus } = require('./snapshot');
+const { acknowledgeEvent, loadHistory, loadSnapshot, getDbStatus, appendHistory, appendVerification, getVerifications } = require('./snapshot');
+const { fetchSheetData } = require('./sheets');
+const { sendWeeklyReport, affectsReportWindow, getChangedDates } = require('./weeklyReport');
+const REPORT_CHAT_ID = process.env.TELEGRAM_REPORT_CHAT_ID;
 
 let lastUpdateId = 0;
 let runCheckCallback = null;
@@ -47,6 +50,8 @@ async function handleTelegramUpdate(update) {
         const helpMsg = `🤖 <b>Sheets Bot Help Menu</b>\n\n` +
           `• <b>/status</b> - Get database, uptime, and check status.\n` +
           `• <b>/summary</b> - List current month bookings.\n` +
+          `• <b>/report</b> - Generate 10-day customer report (check-ins & check-outs).\n` +
+          `• <b>/transfercheck</b> - Check for booking changes and update report.\n` +
           `• <b>/check</b> - Trigger a manual sheet check right now.\n` +
           `• <b>/remind</b> - Trigger manual check and send 30-day reminders.\n` +
           `• <b>/help</b> - View this menu.`;
@@ -90,10 +95,94 @@ async function handleTelegramUpdate(update) {
             await runCheckCallback(true);
             await sendDirectMessage(chatId, '✅ <b>Reminders check completed successfully!</b> Check reminder channel for alerts.');
           } catch (err) {
-            await sendDirectMessage(chatId, `❌ <b>Error during reminder check:</b> ${err.message}`);
+            await sendDirectMessage(chatId, `❌ <b>Error during check:</b> ${err.message}`);
           }
         } else {
           await sendDirectMessage(chatId, '❌ <b>Error:</b> Manual check trigger is not registered on the server.');
+        }
+      }
+
+      else if (command === '/report') {
+        const targetChat = REPORT_CHAT_ID || chatId;
+        await sendDirectMessage(chatId, '⏱ <b>Generating 10-day customer report...</b>');
+        try {
+          const rows = await fetchSheetData();
+          const { messages } = await sendWeeklyReport(rows, targetChat, 'manual');
+          const count = messages.dateMessages ? Object.keys(messages.dateMessages).length : 0;
+          if (targetChat !== chatId) {
+            await sendDirectMessage(chatId, `✅ <b>Report sent to dedicated channel!</b> (${count} daily messages)`);
+          } else {
+            await sendDirectMessage(chatId, `✅ <b>Report sent!</b> (${count} daily messages)`);
+          }
+        } catch (err) {
+          await sendDirectMessage(chatId, `❌ <b>Error generating report:</b> ${err.message}`);
+        }
+      }
+
+      else if (command === '/transfercheck') {
+        const targetChat = REPORT_CHAT_ID || chatId;
+        await sendDirectMessage(chatId, '⏱ <b>Running transfer check...</b>');
+        try {
+          const rows = await fetchSheetData();
+          const previousSnapshot = await loadSnapshot();
+          const { detectChanges, findHeaderRowIndex } = require('./detector');
+
+          const headerIndex = findHeaderRowIndex(rows);
+          const currentMap = {};
+          for (let i = headerIndex + 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row.slice(0, -1).every(cell => !cell || cell.toString().trim() === '')) continue;
+            const firstCell = (row[0] || '').toString().trim();
+            const key = firstCell ? `${firstCell}__row${i}` : `row${i}`;
+            currentMap[key] = { row, rowIndex: i };
+          }
+
+          const prevMap = previousSnapshot?.monthMap || {};
+          const newKeys = Object.keys(currentMap).filter(k => !prevMap[k]);
+          const modifiedKeys = Object.keys(currentMap).filter(k => {
+            if (!prevMap[k]) return false;
+            const prevRow = prevMap[k].row;
+            const currRow = currentMap[k].row;
+            const maxLen = Math.max(prevRow.length, currRow.length);
+            for (let col = 0; col < maxLen; col++) {
+              const before = (prevRow[col] || '').toString().trim();
+              const after = (currRow[col] || '').toString().trim();
+              if (before !== after) return true;
+            }
+            return false;
+          });
+
+          const hasChanges = newKeys.length > 0 || modifiedKeys.length > 0;
+
+          if (!hasChanges) {
+            await sendDirectMessage(chatId, 'ℹ️ <b>No changes detected.</b> All booking data is up to date.');
+            return;
+          }
+
+          const newRows = newKeys.map(k => ({
+            key: k,
+            row: currentMap[k].row,
+            rowIndex: currentMap[k].rowIndex,
+            headers: rows[headerIndex] || [],
+          }));
+          const modifiedRows = modifiedKeys.map(k => ({
+            key: k,
+            row: currentMap[k].row,
+            rowIndex: currentMap[k].rowIndex,
+            headers: rows[headerIndex] || [],
+            changes: [],
+          }));
+
+          if (affectsReportWindow(newRows, modifiedRows)) {
+            const changedDates = getChangedDates(newRows, modifiedRows);
+            const previousMessages = previousSnapshot?.lastReportMessages || null;
+            const { messages } = await sendWeeklyReport(rows, targetChat, 'updated', previousMessages, changedDates);
+            await sendDirectMessage(chatId, `✅ <b>Transfer report updated!</b> (${changedDates.length} date(s) changed)`);
+          } else {
+            await sendDirectMessage(chatId, `ℹ️ <b>Changes detected but outside 10-day window.</b>\nNew: ${newKeys.length} | Modified: ${modifiedKeys.length}`);
+          }
+        } catch (err) {
+          await sendDirectMessage(chatId, `❌ <b>Error during transfer check:</b> ${err.message}`);
         }
       }
 
@@ -220,6 +309,96 @@ async function handleTelegramUpdate(update) {
           });
         } catch (err) {
           console.error('   ❌ Failed to edit Telegram message reply markup:', err.message);
+        }
+      }
+    }
+
+    // ── Handle Report Verification ─────────────────────────────────────────
+    if (data.startsWith('verify_report:')) {
+      const eventId = data.substring(14);
+      
+      const username = callbackQuery.from.username
+        ? `@${callbackQuery.from.username}`
+        : `${callbackQuery.from.first_name} ${callbackQuery.from.last_name || ''}`.trim();
+
+      console.log(`💬 Received Report Verify click from Telegram user ${username} for report ${eventId}`);
+
+      // Answer Callback Query
+      try {
+        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            callback_query_id: callbackQueryId,
+            text: `Report verified by ${username} ✅`
+          })
+        });
+      } catch (err) {}
+
+      // Store verification in history
+      await appendVerification(eventId, username);
+
+      // Get all verifications for this report
+      const verifications = await getVerifications(eventId);
+
+      // Update the message text to include verification info
+      if (message && message.text) {
+        const now = new Date();
+        const timestamp = now.toLocaleString('en-US', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'Asia/Kuala_Lumpur',
+        });
+
+        // Build verification section
+        let verifySection = '\n\n━━━ ✅ VERIFIED ━━━\n';
+        for (const v of verifications) {
+          const vTime = new Date(v.at).toLocaleString('en-US', {
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'Asia/Kuala_Lumpur',
+          });
+          verifySection += `  • ${v.by} — ${vTime}\n`;
+        }
+
+        // Append to original message (remove old verification section if exists)
+        let baseText = message.text;
+        const verifyIdx = baseText.indexOf('\n\n━━━ ✅ VERIFIED ━━━');
+        if (verifyIdx !== -1) {
+          baseText = baseText.substring(0, verifyIdx);
+        }
+
+        const newText = baseText + verifySection;
+
+        // Keep the verify button active for multiple people
+        const replyMarkup = {
+          inline_keyboard: [
+            [
+              { text: `✅ Verify (${verifications.length})`, callback_data: `verify_report:${eventId}` }
+            ]
+          ]
+        };
+
+        try {
+          await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: message.chat.id,
+              message_id: message.message_id,
+              text: newText,
+              parse_mode: 'HTML',
+              reply_markup: replyMarkup
+            })
+          });
+        } catch (err) {
+          console.error('   ❌ Failed to edit report message text:', err.message);
         }
       }
     }
