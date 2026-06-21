@@ -277,7 +277,7 @@ async function runCheck(forceReminders = false) {
 
     // 4. Send notification if there are changes (skip on first boot to prevent spam)
     if (!isInitialRun && (newRows.length > 0 || modifiedRows.length > 0)) {
-      await sendTelegramAlert({ newRows, modifiedRows, checkedAt: now, offlineInfo, eventId, chatId: REPORT_CHAT_ID });
+      await sendTelegramAlert({ newRows, modifiedRows, checkedAt: now, offlineInfo, eventId, chatId: CHAT_ID });
       console.log('   ✅ Telegram notification sent!');
     } else {
       if (isInitialRun) {
@@ -349,7 +349,7 @@ async function runCheck(forceReminders = false) {
 
     if (!isSameError || hasSnoozePassed) {
       try {
-        await sendTelegramAlert({ error: errorMsg, checkedAt: now, eventId, chatId: REPORT_CHAT_ID });
+        await sendTelegramAlert({ error: errorMsg, checkedAt: now, eventId, chatId: CHAT_ID });
         lastErrorAlertTime = nowMs;
         lastErrorMessage = errorMsg;
         console.log('   ✅ Telegram error alert sent.');

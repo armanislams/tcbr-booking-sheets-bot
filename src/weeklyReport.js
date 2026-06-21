@@ -436,6 +436,23 @@ function formatDayMessage(report, day, isUpdated) {
   // Header only on first usage (we'll pass it from caller)
   lines.push(`━━━ 📅 ${day.label} ━━━`);
 
+  // Check-outs
+  // Note: c.pax = snorkel + diving + course (all activities included).
+  if (day.checkOuts.length > 0) {
+    lines.push(`🔽 <b>Check-out (${day.checkOuts.length}):</b>`);
+    let dayPax = { a: 0, c: 0, b: 0 };
+    for (const c of day.checkOuts) {
+      const codeStr = c.code ? `<code>${escapeHtml(c.code)}</code>` : '—';
+      lines.push(` ${codeStr} - ${escapeHtml(c.name || '—')} - ${formatPax(c.pax)}`);
+      dayPax = addPax(dayPax, c.pax);
+    }
+    lines.push(`  total: ${formatPax(dayPax)}`);
+  } else {
+    lines.push(`🔽 <b>Check-out (0):</b> —`);
+  }
+
+  lines.push('');
+
   // Check-ins
   // Note: c.pax = snorkel + diving + course (all activities included).
   if (day.checkIns.length > 0) {
@@ -449,23 +466,6 @@ function formatDayMessage(report, day, isUpdated) {
     lines.push(`  total: ${formatPax(dayPax)}`);
   } else {
     lines.push(`🔼 <b>Check-in (0):</b> —`);
-  }
-
-  lines.push('');
-
-  // Check-outs
-  // Note: c.pax = snorkel + diving + course (all activities included).
-  if (day.checkOuts.length > 0) {
-    lines.push(`🔽 <b>Check-out (${day.checkOuts.length}):</b>`);
-    let dayPax = { a: 0, c: 0, b: 0 };
-    for (const c of day.checkOuts) {
-      const codeStr = c.code ? `<code>${escapeHtml(c.code)}</code>` : '—';
-      lines.push(` ${codeStr} | ${escapeHtml(c.name || '—')} | ${formatPax(c.pax)}`);
-      dayPax = addPax(dayPax, c.pax);
-    }
-    lines.push(`  total: ${formatPax(dayPax)}`);
-  } else {
-    lines.push(`🔽 <b>Check-out (0):</b> —`);
   }
 
   return lines.join('\n').trim();

@@ -192,9 +192,8 @@ async function handleTelegramUpdate(update) {
           }));
 
           if (affectsReportWindow(newRows, modifiedRows)) {
-            const changedDates = getChangedDates(newRows, modifiedRows);
             const previousMessages = previousSnapshot?.lastReportMessages || null;
-            const { messages } = await sendWeeklyReport(rows, targetChat, 'updated', previousMessages, changedDates);
+            const { messages } = await sendWeeklyReport(rows, targetChat, 'manual', previousMessages);
 
             const { saveSnapshot } = require('./snapshot');
             const currentMonthRows = Object.values(previousSnapshot?.monthMap || {});
@@ -206,7 +205,7 @@ async function handleTelegramUpdate(update) {
               messages
             );
 
-            await sendDirectMessage(chatId, `✅ <b>Transfer report updated!</b> (${changedDates.length} date(s) changed)`);
+            await sendDirectMessage(chatId, `✅ <b>Transfer report updated!</b> 10-day report has been checked and updated for changed dates.`);
           } else {
             await sendDirectMessage(chatId, `ℹ️ <b>Changes detected but outside 10-day window.</b>\nNew: ${newKeys.length} | Modified: ${modifiedKeys.length}`);
           }
