@@ -58,19 +58,47 @@ function parseDate(value) {
   const trimmed = value.trim();
   if (!trimmed) return null;
 
-  // Try native parse first (handles ISO and many locale formats)
-  const d = new Date(trimmed);
-  if (!isNaN(d)) return d;
-
-  // Try dd/mm/yyyy or dd-mm-yyyy
-  const dmyMatch = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (dmyMatch) {
-    const [, day, month, year] = dmyMatch;
-    const parsed = new Date(`${year}-${month.padStart(2,'0')}-${day.padStart(2,'0')}`);
-    if (!isNaN(parsed)) return parsed;
+  // 1. Try standard YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD
+  const ymdMatch = trimmed.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+  if (ymdMatch) {
+    const [, year, month, day] = ymdMatch;
+    const d = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+    if (!isNaN(d)) return d;
   }
 
-  // Handle textual formats with ordinal suffixes and typos (e.g. "20th March", "2nd June", "24thJuly", "17th Marcj")
+  // 2. Try DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  const dmy4Match = trimmed.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+  if (dmy4Match) {
+    const [, day, month, year] = dmy4Match;
+    const d = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+    if (!isNaN(d)) return d;
+  }
+
+  // 3. Try DD/MM/YY or DD-MM-YY or DD.MM.YY (2-digit year)
+  const dmy2Match = trimmed.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2})$/);
+  if (dmy2Match) {
+    const [, day, month, year2] = dmy2Match;
+    const year = 2000 + parseInt(year2, 10); // Assume 20xx
+    const d = new Date(year, parseInt(month, 10) - 1, parseInt(day, 10));
+    if (!isNaN(d)) return d;
+  }
+
+  // 4. Try DD/MM or DD-MM or DD.MM (no year)
+  const dmMatch = trimmed.match(/^(\d{1,2})[\/\-\.](\d{1,2})$/);
+  if (dmMatch) {
+    const [, day, month] = dmMatch;
+    const year = new Date().getFullYear();
+    const d = new Date(year, parseInt(month, 10) - 1, parseInt(day, 10));
+    if (!isNaN(d)) return d;
+  }
+
+  // 5. Try native parse for textual dates (e.g. "June 10, 2026")
+  const nativeDate = new Date(trimmed);
+  if (!isNaN(nativeDate) && !/^\d+$/.test(trimmed)) {
+    return nativeDate;
+  }
+
+  // 6. Handle textual formats with ordinal suffixes and typos (e.g. "20th March", "2nd June", "24thJuly", "17th Marcj")
   const dayMatch = trimmed.match(/^(\d+)/);
   if (dayMatch) {
     const day = parseInt(dayMatch[1], 10);

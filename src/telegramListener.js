@@ -344,13 +344,16 @@ async function handleTelegramUpdate(update) {
 
     // ── Handle Report Verification ─────────────────────────────────────────
     if (data.startsWith('verify_report:')) {
-      const eventId = data.substring(14);
+      const parts = data.split(':');
+      const eventId = parts[1];
+      const dateStr = parts[2] || '';
+      const verificationKey = dateStr ? `${eventId}:${dateStr}` : eventId;
       
       const username = callbackQuery.from.username
         ? `@${callbackQuery.from.username}`
         : `${callbackQuery.from.first_name} ${callbackQuery.from.last_name || ''}`.trim();
 
-      console.log(`💬 Received Report Verify click from Telegram user ${username} for report ${eventId}`);
+      console.log(`💬 Received Report Verify click from Telegram user ${username} for report ${verificationKey}`);
 
       // Answer Callback Query
       try {
@@ -365,10 +368,10 @@ async function handleTelegramUpdate(update) {
       } catch (err) {}
 
       // Store verification in history
-      await appendVerification(eventId, username);
+      await appendVerification(verificationKey, username);
 
       // Get all verifications for this report
-      const verifications = await getVerifications(eventId);
+      const verifications = await getVerifications(verificationKey);
 
       // Update the message text to include verification info
       if (message && message.text) {
@@ -406,10 +409,11 @@ async function handleTelegramUpdate(update) {
         const newText = baseText + verifySection;
 
         // Keep the verify button active for multiple people
+        const callbackData = `verify_report:${eventId}${dateStr ? `:${dateStr}` : ''}`;
         const replyMarkup = {
           inline_keyboard: [
             [
-              { text: `✅ Verify (${verifications.length})`, callback_data: `verify_report:${eventId}` }
+              { text: `✅ Verify (${verifications.length})`, callback_data: callbackData }
             ]
           ]
         };

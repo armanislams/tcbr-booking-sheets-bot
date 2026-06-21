@@ -329,6 +329,25 @@ function buildReport(rows) {
       continue;
     }
 
+    // Exclude cancelled, postponed, changed, or duplicate bookings
+    const colorIdx = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROW_COLOR');
+    const rowColor = colorIdx !== -1 ? (row[colorIdx] || 'WHITE') : 'WHITE';
+
+    const remarkIdx = headers.findIndex(h => h && ['REMARK', 'REMARKS'].includes(h.toString().trim().toUpperCase()));
+    const remarkVal = remarkIdx !== -1 ? (row[remarkIdx] || '') : '';
+
+    if (rowColor === 'WHITE') {
+      const lowerRemark = remarkVal.toLowerCase();
+      const isSpecialRemark = lowerRemark.includes('cancel') || lowerRemark.includes('cancle') || lowerRemark.includes('cancled') || lowerRemark.includes('cancelled') ||
+                             lowerRemark.includes('postpone') || lowerRemark.includes('postponed') ||
+                             lowerRemark.includes('change') || lowerRemark.includes('changed') || lowerRemark.includes('chage') || lowerRemark.includes('chaged') ||
+                             lowerRemark.includes('double') || lowerRemark.includes('dup');
+      const isHistorical = lowerRemark.includes('previously') || lowerRemark.includes('prev');
+      if (isSpecialRemark && !isHistorical) {
+        continue;
+      }
+    }
+
     try {
       const code  = codeIdx !== -1   ? (row[codeIdx]  || '').toString().trim() : '';
       const name  = nameIdx !== -1   ? (row[nameIdx]  || '').toString().trim() : '';
@@ -503,7 +522,7 @@ async function sendWeeklyReport(rows, chatId, reason = 'scheduled', prevMessages
       console.log(`   📨 Sending message for ${dateStr}`);
       const replyMarkup = {
         inline_keyboard: [
-          [{ text: '✅ Verify', callback_data: `verify_report:${eventId}` }]
+          [{ text: '✅ Verify', callback_data: `verify_report:${eventId}:${dateStr}` }]
         ]
       };
       const newMsgId = await sendMessage(dayText, replyMarkup, chatId);

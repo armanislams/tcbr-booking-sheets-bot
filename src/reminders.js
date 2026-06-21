@@ -82,6 +82,25 @@ async function checkAndSend30DayReminders(rows, previousSnapshot) {
       continue;
     }
 
+    // Exclude cancelled, postponed, changed, or duplicate bookings
+    const colorIdx = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROW_COLOR');
+    const rowColor = colorIdx !== -1 ? (row[colorIdx] || 'WHITE') : 'WHITE';
+
+    const remarkIdx = headers.findIndex(h => h && ['REMARK', 'REMARKS'].includes(h.toString().trim().toUpperCase()));
+    const remarkVal = remarkIdx !== -1 ? (row[remarkIdx] || '') : '';
+
+    if (rowColor === 'WHITE') {
+      const lowerRemark = remarkVal.toLowerCase();
+      const isSpecialRemark = lowerRemark.includes('cancel') || lowerRemark.includes('cancle') || lowerRemark.includes('cancled') || lowerRemark.includes('cancelled') ||
+                             lowerRemark.includes('postpone') || lowerRemark.includes('postponed') ||
+                             lowerRemark.includes('change') || lowerRemark.includes('changed') || lowerRemark.includes('chage') || lowerRemark.includes('chaged') ||
+                             lowerRemark.includes('double') || lowerRemark.includes('dup');
+      const isHistorical = lowerRemark.includes('previously') || lowerRemark.includes('prev');
+      if (isSpecialRemark && !isHistorical) {
+        continue;
+      }
+    }
+
     const checkInVal = row[checkInIndex];
     const checkInDate = parseDate(checkInVal);
     if (!checkInDate) continue;
