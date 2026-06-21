@@ -14,6 +14,11 @@ async function sendMessage(text, replyMarkup = null, targetChatId = CHAT_ID) {
     return null;
   }
 
+  const target = targetChatId || CHAT_ID;
+  if (!targetChatId) {
+    console.warn(`   ⚠️  sendMessage called without targetChatId. Falling back to TELEGRAM_CHAT_ID.`);
+  }
+
   const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
   const requestBody = {
     chat_id: targetChatId,
@@ -121,6 +126,12 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
   const now = checkedAt || new Date();
   const monthName = now.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur' });
   const timestamp = now.toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' });
+
+  const effectiveChatId = chatId || CHAT_ID;
+  if (!chatId) {
+    console.warn(`   ⚠️  No chatId provided to sendTelegramAlert. Falling back to TELEGRAM_CHAT_ID (${CHAT_ID}).`);
+  }
+  console.log(`   📨 sendTelegramAlert → target chat: ${effectiveChatId}`);
 
   // ── Error notification ──────────────────────────────────────────────────
   if (error) {
@@ -230,4 +241,40 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
   }
 }
 
-module.exports = { sendTelegramAlert, sendMessage, deleteMessage };
+/**
+ * Edits a Telegram message text by chat_id and message_id.
+ * @param {string} chatId
+ * @param {number} messageId
+ * @param {string} text
+ * @returns {boolean} True if successful, false otherwise
+ */
+async function editMessageText(chatId, messageId, text) {
+  if (!BOT_TOKEN || !chatId || !messageId) return false;
+
+  const url = `https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`;
+  const requestBody = {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+  };
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Telegram API error: ${response.statusText} (${errorText})`);
+  }
+
+  const data = await response.json();
+  return data?.ok || false;
+}
+
+module.exports = { sendTelegramAlert, sendMessage, deleteMessage, editMessageText };

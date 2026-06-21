@@ -15,7 +15,7 @@ async function sendDirectMessage(chatId, text) {
   if (!BOT_TOKEN) return;
   const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
   try {
-    await fetch(url, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -25,6 +25,10 @@ async function sendDirectMessage(chatId, text) {
         disable_web_page_preview: true,
       }),
     });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`   ❌ Failed to send direct Telegram reply: ${res.statusText} (${errText})`);
+    }
   } catch (err) {
     console.error('   ❌ Failed to send direct Telegram reply:', err.message);
   }
@@ -107,7 +111,21 @@ async function handleTelegramUpdate(update) {
         await sendDirectMessage(chatId, '⏱ <b>Generating 10-day customer report...</b>');
         try {
           const rows = await fetchSheetData();
-          const { messages } = await sendWeeklyReport(rows, targetChat, 'manual');
+          const previousSnapshot = await loadSnapshot();
+          const prevMessages = previousSnapshot?.lastReportMessages || null;
+
+          const { messages } = await sendWeeklyReport(rows, targetChat, 'manual', prevMessages);
+
+          const { saveSnapshot } = require('./snapshot');
+          const currentMonthRows = Object.values(previousSnapshot?.monthMap || {});
+          await saveSnapshot(
+            rows,
+            currentMonthRows,
+            previousSnapshot?.sentReminders || {},
+            previousSnapshot?.lastWeeklyReportTime || null,
+            messages
+          );
+
           const count = messages.dateMessages ? Object.keys(messages.dateMessages).length : 0;
           if (targetChat !== chatId) {
             await sendDirectMessage(chatId, `✅ <b>Report sent to dedicated channel!</b> (${count} daily messages)`);
@@ -119,7 +137,7 @@ async function handleTelegramUpdate(update) {
         }
       }
 
-      else if (command === '/transfercheck') {
+      else if (command === '/transfercheck' || command === '/transfer-check') {
         const targetChat = REPORT_CHAT_ID || chatId;
         await sendDirectMessage(chatId, '⏱ <b>Running transfer check...</b>');
         try {
@@ -177,6 +195,17 @@ async function handleTelegramUpdate(update) {
             const changedDates = getChangedDates(newRows, modifiedRows);
             const previousMessages = previousSnapshot?.lastReportMessages || null;
             const { messages } = await sendWeeklyReport(rows, targetChat, 'updated', previousMessages, changedDates);
+
+            const { saveSnapshot } = require('./snapshot');
+            const currentMonthRows = Object.values(previousSnapshot?.monthMap || {});
+            await saveSnapshot(
+              rows,
+              currentMonthRows,
+              previousSnapshot?.sentReminders || {},
+              previousSnapshot?.lastWeeklyReportTime || null,
+              messages
+            );
+
             await sendDirectMessage(chatId, `✅ <b>Transfer report updated!</b> (${changedDates.length} date(s) changed)`);
           } else {
             await sendDirectMessage(chatId, `ℹ️ <b>Changes detected but outside 10-day window.</b>\nNew: ${newKeys.length} | Modified: ${modifiedKeys.length}`);

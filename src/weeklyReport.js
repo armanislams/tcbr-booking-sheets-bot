@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { sendMessage, deleteMessage } = require('./telegram');
+const { sendMessage, deleteMessage, editMessageText } = require('./telegram');
 const { findHeaderRowIndex, parseDate, getMonthNameFromText } = require('./detector');
 
 const KL_TIMEZONE = 'Asia/Kuala_Lumpur';
@@ -43,15 +43,28 @@ function getKLDate(date) {
  */
 function parsePax(str) {
   if (!str || typeof str !== 'string') return { a: 0, c: 0, b: 0 };
-  const s = str.trim();
+
+  // 1. Remove the first set of parentheses (if any) to ignore its numeric data (e.g. dive counts)
+  let s = str.replace(/\([^)]*\)/, '').trim();
   if (!s) return { a: 0, c: 0, b: 0 };
 
   let adults = 0;
   let children = 0;
   let babies = 0;
 
-  // Match patterns like "12A", "2C", "1Baby" — with or without spaces
-  // Use lookahead (?=\s|$|[^A-Za-z]) instead of \b to handle compact formats like "8A2C1bABY"
+  // 2. Identify "instructor" entries and categorize them as Adult (A)
+  const instructorRegex = /\+?\s*(\d*)\s*instructor/i;
+  let instructorMatch = s.match(instructorRegex);
+  while (instructorMatch) {
+    const countStr = instructorMatch[1];
+    const count = countStr ? parseInt(countStr, 10) : 1;
+    adults += count;
+    // Remove this instructor match to avoid double-processing
+    s = s.replace(instructorMatch[0], '').trim();
+    instructorMatch = s.match(instructorRegex);
+  }
+
+  // 3. Regular parsing logic
   const numA = s.match(/(\d+)\s*A(?=\s|$|[^A-Za-z])/i);
   const numC = s.match(/(\d+)\s*C(?=\s|$|[^A-Za-z])/i);
   const numB = s.match(/(\d+)\s*Baby\b/i);
@@ -59,10 +72,6 @@ function parsePax(str) {
   if (numA) adults += parseInt(numA[1], 10);
   if (numC) children += parseInt(numC[1], 10);
   if (numB) babies += parseInt(numB[1], 10);
-
-  // Match instructor pattern: "+ 2 Instructor" or "2 Instructor"
-  const numI = s.match(/\+?\s*(\d+)\s*Instructor/i);
-  if (numI) adults += parseInt(numI[1], 10);
 
   return { a: adults, c: children, b: babies };
 }
@@ -81,15 +90,29 @@ function parsePax(str) {
  */
 function parseDivingPax(str) {
   if (!str || typeof str !== 'string') return { a: 0, c: 0, b: 0 };
-  const s = str.trim();
+
+  // 1. Remove the first set of parentheses (if any) to ignore its numeric data (e.g. dive counts)
+  let s = str.replace(/\([^)]*\)/, '').trim();
   if (!s) return { a: 0, c: 0, b: 0 };
 
   let adults = 0;
   let children = 0;
   let babies = 0;
 
+  // 2. Identify "instructor" entries and categorize them as Adult (A)
+  const instructorRegex = /\+?\s*(\d*)\s*instructor/i;
+  let instructorMatch = s.match(instructorRegex);
+  while (instructorMatch) {
+    const countStr = instructorMatch[1];
+    const count = countStr ? parseInt(countStr, 10) : 1;
+    adults += count;
+    // Remove this instructor match to avoid double-processing
+    s = s.replace(instructorMatch[0], '').trim();
+    instructorMatch = s.match(instructorRegex);
+  }
+
+  // 3. Regular parsing logic
   // Try "NUMBER A" or just "A" pattern (with optional space, case insensitive)
-  // Use lookahead (?=\s|$|[^A-Za-z]) to handle compact formats
   const numA = s.match(/(\d+)\s*A(?=\s|$|[^A-Za-z])/i);
   if (numA) {
     adults += parseInt(numA[1], 10);
@@ -128,7 +151,10 @@ function parseDivingPax(str) {
  */
 function parseCoursePax(str) {
   if (!str || typeof str !== 'string') return { a: 0, c: 0, b: 0 };
-  const s = str.trim();
+  
+  // Clean up any extra dive count or free boat dive text
+  // e.g. "+ 4 Dives", "Free 1 boat dive each", "free 1 boat dives"
+  let s = str.replace(/\+?\s*(?:free\s*)?\d+\s*(?:boat\s*)?dives?(?:\s*each)?/gi, '').trim();
   if (!s) return { a: 0, c: 0, b: 0 };
 
   let total = 0;
@@ -438,93 +464,84 @@ function escapeHtml(str) {
  * @param {Array[]} rows - Full sheet data rows
  * @param {string}  chatId - Target Telegram chat ID
  * @param {string}  reason - 'scheduled', 'updated', or 'manual'
- * @param {object}  prevMessages - Previous report messages { headerId, dateMessages: { "YYYY-MM-DD": msgId } }
+ * @param {object}  prevMessages - Previous report messages { headerId, dateMessages: { "YYYY-MM-DD": msgId }, dateHashes: { "YYYY-MM-DD": hash } }
  * @param {string[]} changedDates - Which specific dates changed (for targeted update)
- * @returns {{ report, eventId, messages: { headerId, dateMessages } }}
+ * @returns {{ report, eventId, messages: { headerId, dateMessages, dateHashes } }}
  */
 async function sendWeeklyReport(rows, chatId, reason = 'scheduled', prevMessages = null, changedDates = []) {
   const report = buildReport(rows);
   const eventId = crypto.randomUUID();
-  const dateMessages = {};
 
-  if (reason === 'updated' && prevMessages && changedDates.length > 0) {
-    // ── SELECTIVE UPDATE: only delete and resend messages for changed dates ──
-    console.log(`   🗑️  Deleting old messages for ${changedDates.length} changed date(s): ${changedDates.join(', ')}`);
+  // Accumulate previous messages and hashes to preserve history (even for dates outside the 10-day window)
+  const dateMessages = { ...(prevMessages?.dateMessages || {}) };
+  const dateHashes = { ...(prevMessages?.dateHashes || {}) };
+  let headerId = prevMessages?.headerId || null;
 
-    for (const dateStr of changedDates) {
-      const oldMsgId = prevMessages.dateMessages?.[dateStr];
-      if (oldMsgId) {
-        await deleteMessage(chatId, oldMsgId);
-      }
-    }
+  // Process each day in the current 10-day report window
+  for (const day of report.days) {
+    const dateStr = day.dateStr;
+    const dayText = formatDayMessage(report, day, false);
+    const hash = crypto.createHash('md5').update(dayText).digest('hex');
 
-    // Send new messages only for changed dates
-    for (const day of report.days) {
-      if (changedDates.includes(day.dateStr)) {
-        const dayText = formatDayMessage(report, day, true);
-        const replyMarkup = {
-          inline_keyboard: [
-            [{ text: '✅ Verify', callback_data: `verify_report:${eventId}` }]
-          ]
-        };
-        const msgId = await sendMessage(dayText, replyMarkup, chatId);
-        if (msgId) dateMessages[day.dateStr] = msgId;
-      } else {
-        // Keep old message ID for unchanged dates
-        if (prevMessages.dateMessages?.[day.dateStr]) {
-          dateMessages[day.dateStr] = prevMessages.dateMessages[day.dateStr];
+    const prevMsgId = prevMessages?.dateMessages?.[dateStr];
+    const prevHash = prevMessages?.dateHashes?.[dateStr];
+
+    const hasChanged = (prevHash !== hash) || changedDates.includes(dateStr);
+    const needsSending = !prevMsgId || hasChanged;
+
+    if (needsSending) {
+      // Delete old message if it exists in channel
+      if (prevMsgId) {
+        console.log(`   🗑️  Deleting outdated message for ${dateStr}: ${prevMsgId}`);
+        try {
+          await deleteMessage(chatId, prevMsgId);
+        } catch (err) {
+          console.warn(`   ⚠️  Failed to delete message for date ${dateStr}:`, err.message);
         }
       }
-    }
 
-    // Header stays the same (reuse old header ID)
-    const headerId = prevMessages.headerId || null;
-
-    return {
-      report,
-      eventId,
-      messages: { headerId, dateMessages }
-    };
-
-  } else {
-    // ── FULL SEND: initial or scheduled — send header + all 10 days ──
-
-    // Delete all old messages if this is an update with no specific changed dates
-    if (reason === 'updated' && prevMessages) {
-      console.log(`   🗑️  Deleting all old report messages...`);
-      if (prevMessages.headerId) await deleteMessage(chatId, prevMessages.headerId);
-      if (prevMessages.dateMessages) {
-        for (const msgId of Object.values(prevMessages.dateMessages)) {
-          await deleteMessage(chatId, msgId);
-        }
-      }
-    }
-
-    // Send header message
-    let headerText = `📋 <b>Customer Report: ${report.dateRange}</b>\n🕐 Generated: ${report.generatedAt}`;
-    if (reason === 'updated') {
-      headerText = `⚡ <b>Updated</b> — booking data changed\n\n` + headerText;
-    }
-    const headerId = await sendMessage(headerText, null, chatId);
-
-    // Send one message per day
-    for (const day of report.days) {
-      const dayText = formatDayMessage(report, day, reason === 'updated');
+      console.log(`   📨 Sending message for ${dateStr}`);
       const replyMarkup = {
         inline_keyboard: [
           [{ text: '✅ Verify', callback_data: `verify_report:${eventId}` }]
         ]
       };
-      const msgId = await sendMessage(dayText, replyMarkup, chatId);
-      if (msgId) dateMessages[day.dateStr] = msgId;
+      const newMsgId = await sendMessage(dayText, replyMarkup, chatId);
+      if (newMsgId) {
+        dateMessages[dateStr] = newMsgId;
+        dateHashes[dateStr] = hash;
+      }
+    } else {
+      // Keep old message ID and hash
+      dateMessages[dateStr] = prevMsgId;
+      dateHashes[dateStr] = prevHash;
     }
-
-    return {
-      report,
-      eventId,
-      messages: { headerId, dateMessages }
-    };
   }
+
+  // Update or send header message
+  const headerText = `📋 <b>Customer Report: ${report.dateRange}</b>\n🕐 Generated: ${report.generatedAt}`;
+  if (headerId) {
+    console.log(`   ✏️  Editing report header message: ${headerId}`);
+    try {
+      await editMessageText(chatId, headerId, headerText);
+    } catch (err) {
+      if (err.message && err.message.includes('message is not modified')) {
+        console.log('   ℹ️  Header message is unmodified.');
+      } else {
+        console.warn('   ⚠️  Failed to edit header message, sending a new one:', err.message);
+        headerId = await sendMessage(headerText, null, chatId);
+      }
+    }
+  } else {
+    console.log('   📨 Sending new report header message');
+    headerId = await sendMessage(headerText, null, chatId);
+  }
+
+  return {
+    report,
+    eventId,
+    messages: { headerId, dateMessages, dateHashes }
+  };
 }
 
 /**

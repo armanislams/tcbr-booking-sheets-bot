@@ -8,7 +8,7 @@ const { detectChanges, findHeaderRowIndex, parseDate, getMonthNameFromText, getS
 const { sendTelegramAlert } = require('./src/telegram');
 const { loadSnapshot, saveSnapshot, appendHistory, clearMonthData } = require('./src/snapshot');
 const { checkAndSend30DayReminders } = require('./src/reminders');
-const { sendWeeklyReport, affectsReportWindow, getChangedDates } = require('./src/weeklyReport');
+const { sendWeeklyReport, affectsReportWindow, getChangedDates, buildReport } = require('./src/weeklyReport');
 
 console.log('🤖 Sheets Monitor Bot starting...');
 
@@ -23,6 +23,23 @@ const REPORT_CHAT_ID = process.env.TELEGRAM_REPORT_CHAT_ID;
 const REPORT_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes cooldown between change-triggered reports
 let lastWeeklyReportTime = 0;
 let lastReportMessages = null; // { headerId, dateMessages: { "YYYY-MM-DD": msgId } }
+
+// ─── Channel configuration logging ──────────────────────────────────────────
+const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const REMINDER_CHANNEL_ID = process.env.TELEGRAM_REMINDER_CHANNEL_ID;
+
+console.log('\n📡 Channel Configuration:');
+console.log(`   TELEGRAM_CHAT_ID:             ${CHAT_ID ? `${CHAT_ID.slice(0, 6)}...${CHAT_ID.slice(-4)}` : '❌ NOT SET'}`);
+console.log(`   TELEGRAM_REPORT_CHAT_ID:      ${REPORT_CHAT_ID ? `${REPORT_CHAT_ID.slice(0, 6)}...${REPORT_CHAT_ID.slice(-4)}` : '❌ NOT SET'}`);
+console.log(`   TELEGRAM_REMINDER_CHANNEL_ID: ${REMINDER_CHANNEL_ID ? `${REMINDER_CHANNEL_ID.slice(0, 6)}...${REMINDER_CHANNEL_ID.slice(-4)}` : '❌ NOT SET'}`);
+
+if (!REPORT_CHAT_ID) {
+  console.warn('⚠️  WARNING: TELEGRAM_REPORT_CHAT_ID is not set! Reports will fall back to TELEGRAM_CHAT_ID.');
+} else if (REPORT_CHAT_ID === CHAT_ID) {
+  console.warn('⚠️  WARNING: TELEGRAM_REPORT_CHAT_ID is the same as TELEGRAM_CHAT_ID. They should be different channels.');
+} else if (REPORT_CHAT_ID === REMINDER_CHANNEL_ID) {
+  console.warn('⚠️  WARNING: TELEGRAM_REPORT_CHAT_ID is the same as TELEGRAM_REMINDER_CHANNEL_ID! Reports will go to the reminder channel!');
+}
 
 // ─── Run check job ──────────────────────────────────────────────────────────
 async function runCheck(forceReminders = false) {
@@ -282,23 +299,32 @@ async function runCheck(forceReminders = false) {
       note: isInitialRun ? 'Bot initialized. Established baseline snapshot.' : undefined
     });
 
-    // 6. Check if changes affect the 10-day report window and send updated report
-    if (REPORT_CHAT_ID && !isInitialRun && (newRows.length > 0 || modifiedRows.length > 0)) {
-      const nowMs = Date.now();
-      const cooldownPassed = (nowMs - lastWeeklyReportTime > REPORT_COOLDOWN_MS);
+    // 6. Check if report needs to be updated (sheet changes or date window shifted)
+    if (REPORT_CHAT_ID && !isInitialRun) {
+      const hasChanges = (newRows.length > 0 || modifiedRows.length > 0);
+      const reportData = buildReport(rows);
+      const currentDates = reportData.days.map(d => d.dateStr);
+      const lastDates = Object.keys(lastReportMessages?.dateMessages || {});
+      const datesShifted = lastDates.length === 0 || 
+                           currentDates.some(d => !lastDates.includes(d)) || 
+                           lastDates.some(d => !currentDates.includes(d));
 
-      if (cooldownPassed && affectsReportWindow(newRows, modifiedRows)) {
-        try {
-          // Determine which specific dates are affected
-          const changedDates = getChangedDates(newRows, modifiedRows);
-          console.log(`   📅 Changed dates in 10-day window: ${changedDates.join(', ')}`);
+      if (datesShifted || (hasChanges && affectsReportWindow(newRows, modifiedRows))) {
+        const nowMs = Date.now();
+        const cooldownPassed = (nowMs - lastWeeklyReportTime > REPORT_COOLDOWN_MS);
 
-          const { messages } = await sendWeeklyReport(rows, REPORT_CHAT_ID, 'updated', lastReportMessages, changedDates);
-          lastWeeklyReportTime = nowMs;
-          lastReportMessages = messages;
-          console.log('   ✅ Updated weekly report sent (data changed within 10-day window).');
-        } catch (reportErr) {
-          console.error('   ❌ Failed to send updated weekly report:', reportErr.message);
+        if (datesShifted || cooldownPassed) {
+          try {
+            const changedDates = getChangedDates(newRows, modifiedRows);
+            console.log(`   📅 Updating report. Dates shifted: ${datesShifted}, Changed dates: ${changedDates.join(', ')}`);
+
+            const { messages } = await sendWeeklyReport(rows, REPORT_CHAT_ID, 'updated', lastReportMessages, changedDates);
+            lastWeeklyReportTime = nowMs;
+            lastReportMessages = messages;
+            console.log('   ✅ Weekly/daily report updated successfully.');
+          } catch (reportErr) {
+            console.error('   ❌ Failed to update weekly/daily report:', reportErr.message);
+          }
         }
       }
     }
@@ -371,19 +397,22 @@ cron.schedule('0 0 1 * *', async () => {
   timezone: 'Asia/Kuala_Lumpur'
 });
 
-// Weekly 10-day customer report: every Saturday at 9:00 AM KL time
+// Weekly 10-day customer report: every Saturday at 11:00 AM KL time
 if (REPORT_CHAT_ID) {
-  console.log('📆 Weekly 10-day report job scheduled (Saturday 9:00 AM KL)');
-  cron.schedule('0 9 * * 6', async () => {
+  console.log('📆 Weekly 10-day report job scheduled (Saturday 11:00 AM KL)');
+  cron.schedule('0 11 * * 6', async () => {
     console.log('\n📋 [Saturday Report] Generating 10-day customer report...');
     try {
       const rows = await fetchSheetData();
-      const { messages } = await sendWeeklyReport(rows, REPORT_CHAT_ID, 'scheduled', lastReportMessages);
+      const snapshot = await loadSnapshot();
+      const prevMessages = snapshot?.lastReportMessages || lastReportMessages;
+
+      const { messages } = await sendWeeklyReport(rows, REPORT_CHAT_ID, 'scheduled', prevMessages);
       lastWeeklyReportTime = Date.now();
       lastReportMessages = messages;
-      // Persist the updated time and message IDs
-      const snapshot = await loadSnapshot();
-      await saveSnapshot(rows, [], snapshot?.sentReminders || {}, lastWeeklyReportTime, lastReportMessages);
+      // Persist the updated time and message IDs while keeping the current month rows intact
+      const currentMonthRows = Object.values(snapshot?.monthMap || {});
+      await saveSnapshot(rows, currentMonthRows, snapshot?.sentReminders || {}, lastWeeklyReportTime, lastReportMessages);
       console.log('   ✅ Saturday report sent successfully.');
     } catch (err) {
       console.error('   ❌ Saturday report failed:', err.message);

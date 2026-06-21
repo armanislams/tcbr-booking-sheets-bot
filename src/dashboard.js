@@ -106,7 +106,7 @@ app.post('/api/history/acknowledge', async (req, res) => {
 
 function startDashboard(runCheckFn) {
   runCheckCallback = runCheckFn;
-  const port = parseInt(process.env.DASHBOARD_PORT || '3000', 10);
+  const port = parseInt(process.env.PORT || process.env.DASHBOARD_PORT || '3000', 10);
   app.listen(port, () => {
     console.log(`🌐 Dashboard running at http://localhost:${port}`);
   });
