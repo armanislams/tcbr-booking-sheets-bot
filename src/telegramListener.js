@@ -5,6 +5,7 @@ const REPORT_CHAT_ID = process.env.TELEGRAM_REPORT_CHAT_ID;
 
 let lastUpdateId = 0;
 let runCheckCallback = null;
+const processedUpdateIds = new Set();
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
@@ -39,6 +40,20 @@ async function sendDirectMessage(chatId, text) {
  */
 async function handleTelegramUpdate(update) {
   if (!BOT_TOKEN) return;
+
+  // Deduplicate updates by update_id
+  if (update.update_id) {
+    if (processedUpdateIds.has(update.update_id)) {
+      console.log(`ℹ️ Telegram update ${update.update_id} already processed. Skipping.`);
+      return;
+    }
+    processedUpdateIds.add(update.update_id);
+    // Keep set size bounded
+    if (processedUpdateIds.size > 1000) {
+      const firstVal = processedUpdateIds.values().next().value;
+      processedUpdateIds.delete(firstVal);
+    }
+  }
 
   // ── 1. Handle Bot Commands ────────────────────────────────────────────────
   const message = update.message || update.channel_post;
@@ -387,15 +402,17 @@ async function handleTelegramUpdate(update) {
 
         // Build verification section
         let verifySection = '\n\n━━━ ✅ VERIFIED ━━━\n';
-        for (const v of verifications) {
-          const vTime = new Date(v.at).toLocaleString('en-US', {
+        const lastV = verifications[verifications.length - 1];
+        if (lastV) {
+          const vTime = new Date(lastV.at).toLocaleString('en-US', {
             day: 'numeric',
             month: 'short',
             hour: '2-digit',
             minute: '2-digit',
+            second: '2-digit',
             timeZone: 'Asia/Kuala_Lumpur',
           });
-          verifySection += `  • ${v.by} — ${vTime}\n`;
+          verifySection += `  • Last verified by ${lastV.by} — ${vTime}\n`;
         }
 
         // Append to original message (remove old verification section if exists)
@@ -462,24 +479,29 @@ async function startTelegramListener(runCheckFn) {
     console.error('⚠️ Failed to initialize Telegram update ID offset:', err.message);
   }
 
-  // Poll Telegram every 5 seconds for new updates
-  setInterval(async () => {
+  // Poll Telegram updates serially (non-overlapping)
+  async function pollUpdates() {
     try {
       const url = `https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?offset=${lastUpdateId}&timeout=3`;
       const res = await fetch(url);
-      if (!res.ok) return;
-
-      const data = await res.json();
-      if (!data.ok || !data.result) return;
-
-      for (const update of data.result) {
-        lastUpdateId = update.update_id + 1;
-        await handleTelegramUpdate(update);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.result) {
+          for (const update of data.result) {
+            lastUpdateId = update.update_id + 1;
+            await handleTelegramUpdate(update);
+          }
+        }
       }
     } catch (err) {
       // Catch and ignore network connectivity fluctuations
+    } finally {
+      setTimeout(pollUpdates, 5000);
     }
-  }, 5000);
+  }
+
+  // Start polling
+  pollUpdates();
 }
 
 module.exports = { startTelegramListener };
