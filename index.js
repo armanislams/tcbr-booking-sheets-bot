@@ -309,7 +309,17 @@ async function runCheck(forceReminders = false) {
                            currentDates.some(d => !lastDates.includes(d)) || 
                            lastDates.some(d => !currentDates.includes(d));
 
-      if (datesShifted || (hasChanges && affectsReportWindow(newRows, modifiedRows))) {
+      // Restrict report updates during quiet hours (10:00 PM to 8:00 AM KL time) to avoid disturbing people
+      const klHour = parseInt(new Date().toLocaleString('en-US', {
+        hour: 'numeric',
+        hour12: false,
+        timeZone: 'Asia/Kuala_Lumpur'
+      }), 10);
+      const isQuietHours = klHour < 8 || klHour >= 22;
+
+      if (isQuietHours) {
+        console.log(`   ℹ️ Skipping report update check during quiet hours (${klHour}:00 KL time).`);
+      } else if (datesShifted || (hasChanges && affectsReportWindow(newRows, modifiedRows))) {
         const nowMs = Date.now();
         const cooldownPassed = (nowMs - lastWeeklyReportTime > REPORT_COOLDOWN_MS);
 
