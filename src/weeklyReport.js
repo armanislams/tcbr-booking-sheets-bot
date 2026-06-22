@@ -496,6 +496,15 @@ async function sendWeeklyReport(rows, chatId, reason = 'scheduled', prevMessages
   const dateHashes = { ...(prevMessages?.dateHashes || {}) };
   let headerId = prevMessages?.headerId || null;
 
+  // Clean up entries for dates no longer in the 10-day window to prevent indefinite growth
+  const currentWindowDates = new Set(report.days.map(d => d.dateStr));
+  for (const key of Object.keys(dateMessages)) {
+    if (!currentWindowDates.has(key)) delete dateMessages[key];
+  }
+  for (const key of Object.keys(dateHashes)) {
+    if (!currentWindowDates.has(key)) delete dateHashes[key];
+  }
+
   // Process each day in the current 10-day report window
   for (const day of report.days) {
     const dateStr = day.dateStr;

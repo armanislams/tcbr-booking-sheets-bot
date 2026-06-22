@@ -305,9 +305,12 @@ async function runCheck(forceReminders = false) {
       const reportData = buildReport(rows);
       const currentDates = reportData.days.map(d => d.dateStr);
       const lastDates = Object.keys(lastReportMessages?.dateMessages || {});
+      // Only check forward: are there new dates in the current window not in lastReportMessages?
+      // The backward check (old dates not in current window) is removed because dateMessages
+      // accumulates entries from previous days, so lastDates always contains stale dates
+      // that are no longer in the current 10-day window, causing false positives.
       const datesShifted = lastDates.length === 0 || 
-                           currentDates.some(d => !lastDates.includes(d)) || 
-                           lastDates.some(d => !currentDates.includes(d));
+                           currentDates.some(d => !lastDates.includes(d));
 
       // Restrict report updates during quiet hours (10:00 PM to 8:00 AM KL time) to avoid disturbing people
       const klHour = parseInt(new Date().toLocaleString('en-US', {
