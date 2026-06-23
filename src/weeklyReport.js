@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { sendMessage, deleteMessage, editMessageText } = require('./telegram');
+const { sendMessage, editMessageText } = require('./telegram');
 const { findHeaderRowIndex, parseDate, getMonthNameFromText } = require('./detector');
 
 const KL_TIMEZONE = 'Asia/Kuala_Lumpur';
@@ -430,7 +430,7 @@ function buildReport(rows) {
 /**
  * Format a single day into a Telegram HTML message.
  */
-function formatDayMessage(report, day, isUpdated) {
+function formatDayMessage(report, day) {
   const lines = [];
 
   // Header only on first usage (we'll pass it from caller)
@@ -471,6 +471,21 @@ function formatDayMessage(report, day, isUpdated) {
   return lines.join('\n').trim();
 }
 
+/**
+ * Append a last-updated timestamp footer to a day message.
+ * @param {string} dayText - The formatted day message text
+ * @param {Date}   now     - Current date/time
+ * @returns {string} The day message with timestamp appended
+ */
+function appendTimestamp(dayText, now) {
+  const timestamp = now.toLocaleString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: KL_TIMEZONE,
+  });
+  return `${dayText}\n\n<i>Last updated: ${timestamp} KL</i>`;
+}
+
 function escapeHtml(str) {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -506,9 +521,10 @@ async function sendWeeklyReport(rows, chatId, reason = 'scheduled', prevMessages
   }
 
   // Process each day in the current 10-day report window
+  const now = new Date();
   for (const day of report.days) {
     const dateStr = day.dateStr;
-    const dayText = formatDayMessage(report, day, false);
+    const dayText = formatDayMessage(report, day);
     const hash = crypto.createHash('md5').update(dayText).digest('hex');
 
     const prevMsgId = prevMessages?.dateMessages?.[dateStr];
@@ -518,26 +534,40 @@ async function sendWeeklyReport(rows, chatId, reason = 'scheduled', prevMessages
     const needsSending = !prevMsgId || hasChanged;
 
     if (needsSending) {
-      // Delete old message if it exists in channel
-      if (prevMsgId) {
-        console.log(`   🗑️  Deleting outdated message for ${dateStr}: ${prevMsgId}`);
-        try {
-          await deleteMessage(chatId, prevMsgId);
-        } catch (err) {
-          console.warn(`   ⚠️  Failed to delete message for date ${dateStr}:`, err.message);
-        }
-      }
-
-      console.log(`   📨 Sending message for ${dateStr}`);
+      const dayTextWithTimestamp = appendTimestamp(dayText, now);
       const replyMarkup = {
         inline_keyboard: [
           [{ text: '✅ Verify', callback_data: `verify_report:${eventId}:${dateStr}` }]
         ]
       };
-      const newMsgId = await sendMessage(dayText, replyMarkup, chatId);
-      if (newMsgId) {
-        dateMessages[dateStr] = newMsgId;
-        dateHashes[dateStr] = hash;
+
+      if (prevMsgId) {
+        console.log(`   ✏️  Editing message for ${dateStr}: ${prevMsgId}`);
+        try {
+          await editMessageText(chatId, prevMsgId, dayTextWithTimestamp, replyMarkup);
+          dateMessages[dateStr] = prevMsgId;
+          dateHashes[dateStr] = hash;
+        } catch (err) {
+          if (err.message && err.message.includes('message is not modified')) {
+            console.log(`   ℹ️  Message for ${dateStr} is unmodified.`);
+            dateMessages[dateStr] = prevMsgId;
+            dateHashes[dateStr] = prevHash;
+          } else {
+            console.warn(`   ⚠️  Failed to edit message for ${dateStr}, sending new one:`, err.message);
+            const newMsgId = await sendMessage(dayTextWithTimestamp, replyMarkup, chatId);
+            if (newMsgId) {
+              dateMessages[dateStr] = newMsgId;
+              dateHashes[dateStr] = hash;
+            }
+          }
+        }
+      } else {
+        console.log(`   📨 Sending message for ${dateStr}`);
+        const newMsgId = await sendMessage(dayTextWithTimestamp, replyMarkup, chatId);
+        if (newMsgId) {
+          dateMessages[dateStr] = newMsgId;
+          dateHashes[dateStr] = hash;
+        }
       }
     } else {
       // Keep old message ID and hash

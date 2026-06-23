@@ -248,7 +248,7 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
  * @param {string} text
  * @returns {boolean} True if successful, false otherwise
  */
-async function editMessageText(chatId, messageId, text) {
+async function editMessageText(chatId, messageId, text, replyMarkup = null) {
   if (!BOT_TOKEN || !chatId || !messageId) return false;
 
   const url = `https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`;
@@ -259,6 +259,10 @@ async function editMessageText(chatId, messageId, text) {
     parse_mode: 'HTML',
     disable_web_page_preview: true,
   };
+
+  if (replyMarkup) {
+    requestBody.reply_markup = replyMarkup;
+  }
 
   const response = await fetch(url, {
     method: 'POST',
