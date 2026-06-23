@@ -1,5 +1,5 @@
 const { acknowledgeEvent, loadHistory, loadSnapshot, getDbStatus, appendHistory, appendVerification, getVerifications } = require('./snapshot');
-const { fetchSheetData } = require('./sheets');
+const { fetchAndEnrichSheetData, fetchSheetData } = require('./sheets');
 const { sendWeeklyReport, affectsReportWindow, getChangedDates } = require('./weeklyReport');
 const { isQuietHours } = require('./quietHours');
 const REPORT_CHAT_ID = process.env.TELEGRAM_REPORT_CHAT_ID;
@@ -131,7 +131,7 @@ async function handleTelegramUpdate(update) {
         const targetChat = REPORT_CHAT_ID || chatId;
         await sendDirectMessage(chatId, '⏱ <b>Generating 10-day customer report...</b>');
         try {
-          const rows = await fetchSheetData();
+          const rows = await fetchAndEnrichSheetData();
           const previousSnapshot = await loadSnapshot();
           const prevMessages = previousSnapshot?.lastReportMessages || null;
 
@@ -167,7 +167,7 @@ async function handleTelegramUpdate(update) {
         const targetChat = REPORT_CHAT_ID || chatId;
         await sendDirectMessage(chatId, '⏱ <b>Running transfer check...</b>');
         try {
-          const rows = await fetchSheetData();
+          const rows = await fetchAndEnrichSheetData();
           const previousSnapshot = await loadSnapshot();
           const { detectChanges, findHeaderRowIndex } = require('./detector');
 

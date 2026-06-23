@@ -1234,7 +1234,7 @@
     let remarkBadge = '';
     let titleRemarkInfo = '';
 
-    const isRowWhite = (rowColor === 'WHITE');
+    const isRowWhite = (rowColor.toString().trim().toUpperCase() === 'WHITE');
     const lowerRemark = remarkVal.toLowerCase();
 
     // Special remark check (cancel, postpone, double code, duplicate, etc.)
@@ -1432,7 +1432,7 @@
     let cardLeftBorder = 'var(--accent)';
     let titleRemarkInfo = '';
 
-    const isRowWhite = (rowColor === 'WHITE');
+    const isRowWhite = (rowColor.toString().trim().toUpperCase() === 'WHITE');
     const lowerRemark = remarkVal.toLowerCase();
 
     // Special remark check (cancel, postpone, double code, duplicate, etc.)
