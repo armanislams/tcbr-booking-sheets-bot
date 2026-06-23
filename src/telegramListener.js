@@ -1,6 +1,7 @@
 const { acknowledgeEvent, loadHistory, loadSnapshot, getDbStatus, appendHistory, appendVerification, getVerifications } = require('./snapshot');
 const { fetchSheetData } = require('./sheets');
 const { sendWeeklyReport, affectsReportWindow, getChangedDates } = require('./weeklyReport');
+const { isQuietHours } = require('./quietHours');
 const REPORT_CHAT_ID = process.env.TELEGRAM_REPORT_CHAT_ID;
 
 let lastUpdateId = 0;
@@ -122,6 +123,11 @@ async function handleTelegramUpdate(update) {
       }
 
       else if (command === '/report') {
+        const { isQuiet, klHour } = isQuietHours();
+        if (isQuiet) {
+          await sendDirectMessage(chatId, `ℹ️ <b>Report generation skipped during quiet hours</b> (${klHour}:00 KL time). Quiet hours: 10 PM – 8 AM.`);
+          return;
+        }
         const targetChat = REPORT_CHAT_ID || chatId;
         await sendDirectMessage(chatId, '⏱ <b>Generating 10-day customer report...</b>');
         try {
@@ -153,6 +159,11 @@ async function handleTelegramUpdate(update) {
       }
 
       else if (command === '/transfercheck' || command === '/transfer-check') {
+        const { isQuiet, klHour } = isQuietHours();
+        if (isQuiet) {
+          await sendDirectMessage(chatId, `ℹ️ <b>Transfer check skipped during quiet hours</b> (${klHour}:00 KL time). Quiet hours: 10 PM – 8 AM.`);
+          return;
+        }
         const targetChat = REPORT_CHAT_ID || chatId;
         await sendDirectMessage(chatId, '⏱ <b>Running transfer check...</b>');
         try {

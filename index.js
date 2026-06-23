@@ -9,6 +9,7 @@ const { sendTelegramAlert } = require('./src/telegram');
 const { loadSnapshot, saveSnapshot, appendHistory, clearMonthData } = require('./src/snapshot');
 const { checkAndSend30DayReminders } = require('./src/reminders');
 const { sendWeeklyReport, affectsReportWindow, getChangedDates, buildReport } = require('./src/weeklyReport');
+const { isQuietHours } = require('./src/quietHours');
 
 console.log('🤖 Sheets Monitor Bot starting...');
 
@@ -23,6 +24,7 @@ const REPORT_CHAT_ID = process.env.TELEGRAM_REPORT_CHAT_ID;
 const REPORT_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes cooldown between change-triggered reports
 let lastWeeklyReportTime = 0;
 let lastReportMessages = null; // { headerId, dateMessages: { "YYYY-MM-DD": msgId } }
+let pendingReportUpdate = false; // true when a report update was deferred due to quiet hours
 
 // ─── Channel configuration logging ──────────────────────────────────────────
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
@@ -277,8 +279,13 @@ async function runCheck(forceReminders = false) {
 
     // 4. Send notification if there are changes (skip on first boot to prevent spam)
     if (!isInitialRun && (newRows.length > 0 || modifiedRows.length > 0)) {
-      await sendTelegramAlert({ newRows, modifiedRows, checkedAt: now, offlineInfo, eventId, chatId: CHAT_ID });
-      console.log('   ✅ Telegram notification sent!');
+      const { isQuiet: isAlertQuiet, klHour: alertKlHour } = isQuietHours();
+      if (isAlertQuiet) {
+        console.log(`   ℹ️  Quiet hours (${alertKlHour}:00 KL): suppressing change notification.`);
+      } else {
+        await sendTelegramAlert({ newRows, modifiedRows, checkedAt: now, offlineInfo, eventId, chatId: CHAT_ID });
+        console.log('   ✅ Telegram notification sent!');
+      }
     } else {
       if (isInitialRun) {
         console.log('   ℹ️  Initial run: established baseline snapshot, skipped notifications.');
@@ -313,27 +320,27 @@ async function runCheck(forceReminders = false) {
                            currentDates.some(d => !lastDates.includes(d));
 
       // Restrict report updates during quiet hours (10:00 PM to 8:00 AM KL time) to avoid disturbing people
-      const klHour = parseInt(new Date().toLocaleString('en-US', {
-        hour: 'numeric',
-        hour12: false,
-        timeZone: 'Asia/Kuala_Lumpur'
-      }), 10);
-      const isQuietHours = klHour < 8 || klHour >= 22;
+      const { isQuiet, klHour } = isQuietHours();
 
-      if (isQuietHours) {
+      if (isQuiet) {
+        // If there's a reason to update, flag it so the next non-quiet run picks it up
+        if (datesShifted || (hasChanges && affectsReportWindow(newRows, modifiedRows))) {
+          pendingReportUpdate = true;
+        }
         console.log(`   ℹ️ Skipping report update check during quiet hours (${klHour}:00 KL time).`);
-      } else if (datesShifted || (hasChanges && affectsReportWindow(newRows, modifiedRows))) {
+      } else if (pendingReportUpdate || datesShifted || (hasChanges && affectsReportWindow(newRows, modifiedRows))) {
         const nowMs = Date.now();
         const cooldownPassed = (nowMs - lastWeeklyReportTime > REPORT_COOLDOWN_MS);
 
-        if (datesShifted || cooldownPassed) {
+        if (pendingReportUpdate || datesShifted || cooldownPassed) {
           try {
             const changedDates = getChangedDates(newRows, modifiedRows);
-            console.log(`   📅 Updating report. Dates shifted: ${datesShifted}, Changed dates: ${changedDates.join(', ')}`);
+            console.log(`   📅 Updating report. Dates shifted: ${datesShifted}, Pending: ${pendingReportUpdate}, Changed dates: ${changedDates.join(', ')}`);
 
             const { messages } = await sendWeeklyReport(rows, REPORT_CHAT_ID, 'updated', lastReportMessages, changedDates);
             lastWeeklyReportTime = nowMs;
             lastReportMessages = messages;
+            pendingReportUpdate = false;
             console.log('   ✅ Weekly/daily report updated successfully.');
           } catch (reportErr) {
             console.error('   ❌ Failed to update weekly/daily report:', reportErr.message);
@@ -405,6 +412,10 @@ console.log('📆 Monthly reset job scheduled (1st of each month at 12:00 AM KL)
 cron.schedule('0 0 1 * *', async () => {
   console.log('\n🗑️  [Monthly Reset] Clearing history and snapshot...');
   await clearMonthData();
+  // Reset in-memory report state so the next run starts fresh
+  lastWeeklyReportTime = 0;
+  lastReportMessages = null;
+  pendingReportUpdate = false;
   console.log('   ✅ Monthly reset complete. Next check will establish a new baseline.');
 }, {
   timezone: 'Asia/Kuala_Lumpur'
@@ -415,6 +426,11 @@ if (REPORT_CHAT_ID) {
   console.log('📆 Weekly 10-day report job scheduled (Saturday 11:00 AM KL)');
   cron.schedule('0 11 * * 6', async () => {
     console.log('\n📋 [Saturday Report] Generating 10-day customer report...');
+    const { isQuiet, klHour } = isQuietHours();
+    if (isQuiet) {
+      console.log(`   ℹ️ Skipping Saturday report during quiet hours (${klHour}:00 KL time).`);
+      return;
+    }
     try {
       const rows = await fetchSheetData();
       const snapshot = await loadSnapshot();
