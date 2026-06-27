@@ -477,13 +477,33 @@ function formatDayMessage(report, day) {
  * @param {Date}   now     - Current date/time
  * @returns {string} The day message with timestamp appended
  */
+// function appendTimestamp(dayText, now) {
+//   const timestamp = now.toLocaleString('en-US', {
+//     hour: '2-digit',
+//     minute: '2-digit',
+//     timeZone: KL_TIMEZONE,
+//   });
+//   return `${dayText}\n\n<i>Last updated: ${timestamp} KL</i>`;
+// } 
+
 function appendTimestamp(dayText, now) {
-  const timestamp = now.toLocaleString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
+  // Format the time (e.g., "03:15 PM")
+  // Kept as 'en-US' to maintain the 12-hour AM/PM format
+  const timeString = now.toLocaleString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
     timeZone: KL_TIMEZONE,
   });
-  return `${dayText}\n\n<i>Last updated: ${timestamp} KL</i>`;
+
+  // Format the date to Day/Month/Year (e.g., "27/06/2026")
+  // Switched to 'en-GB' to get the DD/MM/YYYY format
+  const dateString = now.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: KL_TIMEZONE,
+  });
+
+  return `${dayText}\n\n<i>Last updated: ${timeString}, ${dateString}</i>`;
 }
 
 function escapeHtml(str) {

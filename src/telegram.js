@@ -127,11 +127,11 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
   const monthName = now.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur' });
   const timestamp = now.toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' });
 
-  const effectiveChatId = chatId || CHAT_ID;
+  const targetChatId = chatId || CHAT_ID;
   if (!chatId) {
     console.warn(`   ⚠️  No chatId provided to sendTelegramAlert. Falling back to TELEGRAM_CHAT_ID (${CHAT_ID}).`);
   }
-  console.log(`   📨 sendTelegramAlert → target chat: ${effectiveChatId}`);
+  console.log(`   📨 sendTelegramAlert → target chat: ${targetChatId}`);
 
   // ── Error notification ──────────────────────────────────────────────────
   if (error) {
@@ -140,7 +140,7 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
       `🕐 ${timestamp}\n\n` +
       `❌ ${escapeHtml(error)}`,
       null,
-      chatId
+      targetChatId
     );
     return;
   }
@@ -222,7 +222,7 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
   // Telegram has a 4096 char limit per message — split if needed
   const LIMIT = 4000;
   if (fullMessage.length <= LIMIT) {
-    await sendMessage(fullMessage, replyMarkup, chatId);
+    await sendMessage(fullMessage, replyMarkup, targetChatId);
   } else {
     // Send in chunks
     let chunk = '';
@@ -230,13 +230,13 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if ((chunk + line + '\n').length > LIMIT) {
-        await sendMessage(chunk, null, chatId);
+        await sendMessage(chunk, null, targetChatId);
         chunk = '';
       }
       chunk += line + '\n';
     }
     if (chunk.trim()) {
-      await sendMessage(chunk, replyMarkup, chatId);
+      await sendMessage(chunk, replyMarkup, targetChatId);
     }
   }
 }
