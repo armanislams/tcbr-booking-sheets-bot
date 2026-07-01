@@ -1,6 +1,40 @@
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID   = process.env.TELEGRAM_CHAT_ID;
 
+const FETCH_TIMEOUT_MS = 15000;
+const MAX_RETRIES = 2;
+
+/**
+ * Fetch wrapper with timeout and retry.
+ * @param {string} url
+ * @param {object} options - fetch options
+ * @param {number} timeoutMs - per-attempt timeout
+ * @param {number} retries - number of retries on failure
+ * @returns {Response|null} Response object or null if all attempts fail
+ */
+async function fetchWithRetry(url, options, timeoutMs = FETCH_TIMEOUT_MS, retries = MAX_RETRIES) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      return response;
+    } catch (err) {
+      if (attempt < retries) {
+        const delay = (attempt + 1) * 1000;
+        console.warn(`   ⚠️  Fetch attempt ${attempt + 1}/${retries + 1} failed: ${err.message}. Retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        console.error(`   ❌  Fetch failed after ${retries + 1} attempts: ${err.message}`);
+        return null;
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return null;
+}
+
 /**
  * Sends a Telegram message.
  * @param {string} text - The message text (supports Telegram HTML formatting)
@@ -31,17 +65,21 @@ async function sendMessage(text, replyMarkup = null, targetChatId = CHAT_ID) {
     requestBody.reply_markup = replyMarkup;
   }
 
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(requestBody),
   });
 
+  if (!response) {
+    console.error('   ❌  Failed to send Telegram message after all retries.');
+    return null;
+  }
+
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Telegram API error: ${response.statusText} (${errorText})`);
+    console.error(`   ❌  Telegram API error: ${response.statusText} (${errorText})`);
+    return null;
   }
 
   const data = await response.json();
@@ -264,17 +302,18 @@ async function editMessageText(chatId, messageId, text, replyMarkup = null) {
     requestBody.reply_markup = replyMarkup;
   }
 
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(requestBody),
   });
 
+  if (!response) return false;
+
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Telegram API error: ${response.statusText} (${errorText})`);
+    console.warn(`   ⚠️  Telegram editMessageText API error: ${response.statusText} (${errorText})`);
+    return false;
   }
 
   const data = await response.json();

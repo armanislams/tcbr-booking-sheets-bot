@@ -67,12 +67,8 @@ async function runCheck(forceReminders = false) {
       lastReportMessages = previousSnapshot.lastReportMessages;
     }
     if (forceReminders) {
-      try {
-        const remindersResult = await checkAndSend30DayReminders(rows, previousSnapshot);
-        sentReminders = remindersResult.sentReminders;
-      } catch (reminderErr) {
-        throw new Error(`Reminder check failed: ${reminderErr.message}`);
-      }
+      const remindersResult = await checkAndSend30DayReminders(rows, previousSnapshot);
+      sentReminders = remindersResult.sentReminders;
     }
 
     let offlineInfo = null;

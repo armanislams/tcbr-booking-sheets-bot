@@ -150,30 +150,51 @@ async function checkAndSend30DayReminders(rows, previousSnapshot) {
       `• <b>Check-In:</b> ${escapeHtml(checkIn)}\n` +
       `• <b>Balance:</b> ${balanceStatusIcon} ${escapeHtml(balanceText)}\n`
     );
-
-    // Mark as sent
-    sentReminders[reminderKey] = { sentAt: today.toISOString() };
   }
 
   const fullMessage = parts.join('');
   const LIMIT = 4000;
-  
-  if (fullMessage.length <= LIMIT) {
-    await sendMessage(fullMessage, null, REMINDER_CHANNEL_ID);
-  } else {
-    let chunk = '';
-    const lines = fullMessage.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if ((chunk + line + '\n').length > LIMIT) {
-        await sendMessage(chunk, null, REMINDER_CHANNEL_ID);
-        chunk = '';
+
+  let sendOk = false;
+  try {
+    if (fullMessage.length <= LIMIT) {
+      const msgId = await sendMessage(fullMessage, null, REMINDER_CHANNEL_ID);
+      sendOk = msgId !== null;
+    } else {
+      let chunk = '';
+      const lines = fullMessage.split('\n');
+      let allChunksSent = true;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if ((chunk + line + '\n').length > LIMIT) {
+          const msgId = await sendMessage(chunk, null, REMINDER_CHANNEL_ID);
+          if (msgId === null) {
+            allChunksSent = false;
+            break;
+          }
+          chunk = '';
+        }
+        chunk += line + '\n';
       }
-      chunk += line + '\n';
+      if (chunk.trim() && allChunksSent) {
+        const msgId = await sendMessage(chunk, null, REMINDER_CHANNEL_ID);
+        if (msgId === null) allChunksSent = false;
+      }
+      sendOk = allChunksSent;
     }
-    if (chunk.trim()) {
-      await sendMessage(chunk, null, REMINDER_CHANNEL_ID);
-    }
+  } catch (err) {
+    console.error(`   ❌  Unexpected error while sending reminders: ${err.message}`);
+    sendOk = false;
+  }
+
+  if (!sendOk) {
+    console.warn('   ⚠️  Reminder messages could not be sent. They will be retried on the next scheduled run.');
+    return { sentReminders: previousSnapshot?.sentReminders || {} };
+  }
+
+  // Mark reminders as sent only after successful delivery
+  for (const item of remindersToSend) {
+    sentReminders[item.reminderKey] = { sentAt: today.toISOString() };
   }
 
   console.log(`   ✅ 30-day reminders sent to channel.`);

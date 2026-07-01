@@ -235,15 +235,20 @@ function getStayDays(checkInStr, checkOutStr) {
   const start = new Date(checkInDate);
   const end = checkOutDate ? new Date(checkOutDate) : new Date(checkInDate);
 
+  const MONTH_NAMES = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
   if (!checkOutDate || end <= start) {
-    const monthName = getMonthNameFromText(start.toLocaleString('en-US', { month: 'long' })) || 'June';
+    const monthName = MONTH_NAMES[start.getMonth()];
     days.push({ day: start.getDate(), month: monthName.toUpperCase() });
     return days;
   }
 
   let current = new Date(start);
   while (current < end) {
-    const monthName = getMonthNameFromText(current.toLocaleString('en-US', { month: 'long' })) || 'June';
+    const monthName = MONTH_NAMES[current.getMonth()];
     days.push({ day: current.getDate(), month: monthName.toUpperCase() });
     current.setDate(current.getDate() + 1);
   }

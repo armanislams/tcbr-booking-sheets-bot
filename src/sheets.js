@@ -184,7 +184,13 @@ async function fetchRoomMap(monthsToFetch = []) {
 
     const monthAllocations = {}; // { [code]: { [day]: { [room]: pax } } }
 
-    const dayNumbersRow = rows[4] || [];
+    // Find ROOM TYPE row index dynamically
+    let roomTypeRowIndex = rows.findIndex(r => r && r[0] && r[0].toString().trim().toUpperCase() === 'ROOM TYPE');
+    if (roomTypeRowIndex === -1) {
+      roomTypeRowIndex = 3; // Fallback to index 3 (June default)
+    }
+
+    const dayNumbersRow = rows[roomTypeRowIndex + 1] || [];
     const colIndexToDay = {};
     for (let colIndex = 2; colIndex < dayNumbersRow.length; colIndex++) {
       const dayStr = (dayNumbersRow[colIndex] || '').toString().trim();
@@ -194,8 +200,8 @@ async function fetchRoomMap(monthsToFetch = []) {
       }
     }
 
-    // Calendar room assignments start at Row 6 (index 5 in 0-indexed rows)
-    for (let rowIndex = 5; rowIndex < rows.length; rowIndex++) {
+    // Calendar room assignments start at roomTypeRowIndex + 2
+    for (let rowIndex = roomTypeRowIndex + 2; rowIndex < rows.length; rowIndex++) {
       const row = rows[rowIndex];
       if (!row || row.length === 0) continue;
 
@@ -268,7 +274,11 @@ async function enrichSheetRows(rows) {
   const monthsToFetch = new Set();
   
   // Add current month name as fallback
-  const currentMonthName = getMonthNameFromText(new Date().toLocaleString('en-US', { month: 'long' })) || 'June';
+  const MONTH_NAMES = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  const currentMonthName = MONTH_NAMES[new Date().getMonth()];
   monthsToFetch.add(currentMonthName);
 
   const checkInIndex = headers.findIndex(h => h && ['CHECK IN', 'CHECK-IN', 'CHECKIN'].includes(h.toString().trim().toUpperCase()));
@@ -364,7 +374,11 @@ async function enrichSheetRows(rows) {
         const prevDate = new Date(checkInDate);
         prevDate.setDate(prevDate.getDate() - 1);
         prevDay = prevDate.getDate();
-        prevMonth = (getMonthNameFromText(prevDate.toLocaleString('en-US', { month: 'long' })) || 'June').toUpperCase();
+        const MONTH_NAMES = [
+          'January', 'February', 'March', 'April', 'May', 'June',
+          'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+        prevMonth = MONTH_NAMES[prevDate.getMonth()].toUpperCase();
       }
 
       const prevDayRooms = new Set();
