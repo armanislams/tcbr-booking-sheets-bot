@@ -450,6 +450,8 @@ function formatDayMessage(report, day) {
   }
   const headerText = `BOAT TRANSFER ${d}${suffix} ${monthName}`;
   lines.push(` ${headerText} `);
+  lines.push('');
+  lines.push('');
 
   // Check-outs
   // Note: c.pax = snorkel + diving + course (all activities included).
