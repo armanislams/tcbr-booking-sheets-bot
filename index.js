@@ -46,7 +46,7 @@ if (!REPORT_CHAT_ID) {
 }
 
 // ─── Run check job ──────────────────────────────────────────────────────────
-async function runCheck(forceReminders = false) {
+async function runCheck(forceReminders = false, isManual = false) {
   if (isRunning) {
     console.log('   ⚠️  A check is already running. Skipping this request.');
     return;
@@ -115,7 +115,7 @@ async function runCheck(forceReminders = false) {
     // 4. Send notification if there are changes (skip on first boot to prevent spam)
     if (!isInitialRun && (newRows.length > 0 || modifiedRows.length > 0)) {
       const { isQuiet: isAlertQuiet, klHour: alertKlHour } = isQuietHours();
-      if (isAlertQuiet) {
+      if (isAlertQuiet && !isManual) {
         console.log(`   ℹ️  Quiet hours (${alertKlHour}:00 KL): suppressing change notification.`);
       } else {
         await sendTelegramAlert({ newRows, modifiedRows, checkedAt: now, offlineInfo, eventId, chatId: CHAT_ID });
@@ -157,7 +157,7 @@ async function runCheck(forceReminders = false) {
       // Restrict report updates during quiet hours (10:00 PM to 8:00 AM KL time) to avoid disturbing people
       const { isQuiet, klHour } = isQuietHours();
 
-      if (isQuiet) {
+      if (isQuiet && !isManual) {
         // If there's a reason to update, flag it so the next non-quiet run picks it up
         if (datesShifted || (hasChanges && affectsReportWindow(newRows, modifiedRows))) {
           pendingReportUpdate = true;
@@ -217,7 +217,7 @@ async function runCheck(forceReminders = false) {
 
     // Schedule retry in 1 minute
     console.log('   🕒 Scheduling retry check in 1 minute...');
-    retryTimeout = setTimeout(() => runCheck(forceReminders), 60000);
+    retryTimeout = setTimeout(() => runCheck(forceReminders, isManual), 60000);
   } finally {
     isRunning = false;
     isBoot = false;

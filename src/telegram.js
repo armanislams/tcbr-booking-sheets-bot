@@ -42,7 +42,7 @@ async function fetchWithRetry(url, options, timeoutMs = FETCH_TIMEOUT_MS, retrie
  * @param {string} targetChatId - Target chat ID
  * @returns {number|null} The message_id of the sent message, or null on failure
  */
-async function sendMessage(text, replyMarkup = null, targetChatId = CHAT_ID) {
+async function sendMessage(text, replyMarkup = null, targetChatId = CHAT_ID, disableNotification = false) {
   if (!BOT_TOKEN || !targetChatId) {
     console.warn('   ⚠️  Telegram not configured. Skipping notification.');
     return null;
@@ -59,6 +59,7 @@ async function sendMessage(text, replyMarkup = null, targetChatId = CHAT_ID) {
     text,
     parse_mode: 'HTML',
     disable_web_page_preview: true,
+    disable_notification: disableNotification,
   };
 
   if (replyMarkup) {

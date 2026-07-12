@@ -98,7 +98,7 @@ async function handleTelegramUpdate(update) {
         await sendDirectMessage(chatId, '⏱ <b>Triggering manual check...</b>');
         if (runCheckCallback) {
           try {
-            await runCheckCallback(false);
+            await runCheckCallback(false, true);
             await sendDirectMessage(chatId, '✅ <b>Check completed successfully!</b> Check dashboard or notifications for changes.');
           } catch (err) {
             await sendDirectMessage(chatId, `❌ <b>Error during check:</b> ${err.message}`);
@@ -112,7 +112,7 @@ async function handleTelegramUpdate(update) {
         await sendDirectMessage(chatId, '⏱ <b>Triggering manual reminders check...</b>');
         if (runCheckCallback) {
           try {
-            await runCheckCallback(true);
+            await runCheckCallback(true, true);
             await sendDirectMessage(chatId, '✅ <b>Reminders check completed successfully!</b> Check reminder channel for alerts.');
           } catch (err) {
             await sendDirectMessage(chatId, `❌ <b>Error during check:</b> ${err.message}`);
@@ -123,11 +123,6 @@ async function handleTelegramUpdate(update) {
       }
 
       else if (command === '/report') {
-        const { isQuiet, klHour } = isQuietHours();
-        if (isQuiet) {
-          await sendDirectMessage(chatId, `ℹ️ <b>Report generation skipped during quiet hours</b> (${klHour}:00 KL time). Quiet hours: 10 PM – 8 AM.`);
-          return;
-        }
         const targetChat = REPORT_CHAT_ID || chatId;
         await sendDirectMessage(chatId, '⏱ <b>Generating 10-day customer report...</b>');
         try {
@@ -159,11 +154,6 @@ async function handleTelegramUpdate(update) {
       }
 
       else if (command === '/transfercheck' || command === '/transfer-check') {
-        const { isQuiet, klHour } = isQuietHours();
-        if (isQuiet) {
-          await sendDirectMessage(chatId, `ℹ️ <b>Transfer check skipped during quiet hours</b> (${klHour}:00 KL time). Quiet hours: 10 PM – 8 AM.`);
-          return;
-        }
         const targetChat = REPORT_CHAT_ID || chatId;
         await sendDirectMessage(chatId, '⏱ <b>Running transfer check...</b>');
         try {
