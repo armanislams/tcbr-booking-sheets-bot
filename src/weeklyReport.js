@@ -434,7 +434,22 @@ function formatDayMessage(report, day) {
   const lines = [];
 
   // Header only on first usage (we'll pass it from caller)
-  lines.push(`━━━ 📅 ${day.label} ━━━`);
+  const [year, monthStr, dayStr] = day.dateStr.split('-');
+  const d = parseInt(dayStr, 10);
+  const m = parseInt(monthStr, 10) - 1;
+  const jsDate = new Date(parseInt(year, 10), m, d);
+  const monthName = jsDate.toLocaleString('en-US', { month: 'long', timeZone: KL_TIMEZONE }).toUpperCase();
+  
+  let suffix = 'th';
+  if (d < 11 || d > 13) {
+    switch (d % 10) {
+      case 1: suffix = 'st'; break;
+      case 2: suffix = 'nd'; break;
+      case 3: suffix = 'rd'; break;
+    }
+  }
+  const headerText = `BOAT TRANSFER ${d}${suffix} ${monthName}`;
+  lines.push(` ${headerText} `);
 
   // Check-outs
   // Note: c.pax = snorkel + diving + course (all activities included).

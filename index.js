@@ -18,6 +18,8 @@ let isBoot = true;
 // Error alert snoozing state
 let lastErrorAlertTime = 0;
 let lastErrorMessage = '';
+let isRunning = false;
+let retryTimeout = null;
 
 // Weekly report state
 const REPORT_CHAT_ID = process.env.TELEGRAM_REPORT_CHAT_ID;
@@ -45,6 +47,17 @@ if (!REPORT_CHAT_ID) {
 
 // ─── Run check job ──────────────────────────────────────────────────────────
 async function runCheck(forceReminders = false) {
+  if (isRunning) {
+    console.log('   ⚠️  A check is already running. Skipping this request.');
+    return;
+  }
+  isRunning = true;
+
+  if (retryTimeout) {
+    clearTimeout(retryTimeout);
+    retryTimeout = null;
+  }
+
   const now = new Date();
   console.log(`\n[${now.toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' })}] ⏱  Running check...`);
   
@@ -201,7 +214,12 @@ async function runCheck(forceReminders = false) {
     } else {
       console.log(`   ℹ️ Telegram error alert snoozed (Same error within ${snoozeHours}h).`);
     }
+
+    // Schedule retry in 1 minute
+    console.log('   🕒 Scheduling retry check in 1 minute...');
+    retryTimeout = setTimeout(() => runCheck(forceReminders), 60000);
   } finally {
+    isRunning = false;
     isBoot = false;
   }
 }
