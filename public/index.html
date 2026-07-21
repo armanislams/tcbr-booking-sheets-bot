@@ -800,7 +800,7 @@
       const allBookingsData = await allBookingsRes.json();
       allBookings = allBookingsData.bookings || [];
 
-      updateStats();
+      updateStats(status);
       renderContent();
 
       const lastCheck = status.lastCheck
@@ -838,14 +838,15 @@
   }
 
   // ── Update stat cards ───────────────────────────────────────────────────────
-  function updateStats() {
+  function updateStats(status) {
     let newCount = 0, modCount = 0, errCount = 0;
     for (const event of allHistory) {
       if (event.error) { errCount++; continue; }
       newCount += (event.newRows || []).length;
       modCount += (event.modifiedRows || []).length;
     }
-    document.getElementById('stat-total').textContent    = allHistory.length;
+    const totalChecks = (status && typeof status.totalChecks !== 'undefined') ? status.totalChecks : allHistory.length;
+    document.getElementById('stat-total').textContent    = totalChecks;
     document.getElementById('stat-new').textContent      = newCount;
     document.getElementById('stat-modified').textContent = modCount;
     document.getElementById('stat-errors').textContent   = errCount;

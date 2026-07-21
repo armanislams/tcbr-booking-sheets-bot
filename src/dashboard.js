@@ -1,6 +1,6 @@
 const express = require('express');
 const path    = require('path');
-const { loadHistory, loadSnapshot, getDbStatus, acknowledgeEvent } = require('./snapshot');
+const { loadHistory, loadSnapshot, getDbStatus, acknowledgeEvent, getTotalChecksCount } = require('./snapshot');
 
 const app = express();
 
@@ -19,10 +19,12 @@ app.get('/api/history', async (req, res) => {
 // API endpoint for health check / last check info
 app.get('/api/status', async (req, res) => {
   const history = await loadHistory();
+  const totalChecks = await getTotalChecksCount();
   res.json({
     status: 'running',
     lastCheck: history[0]?.checkedAt || null,
     totalEventsLogged: history.length,
+    totalChecks,
     dbStatus: getDbStatus(),
   });
 });

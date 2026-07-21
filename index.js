@@ -234,7 +234,8 @@ startTelegramListener(runCheck);
 runCheck();
 
 // ─── Schedule recurring checks ──────────────────────────────────────────────
-const cronExpression = process.env.CHECK_INTERVAL_CRON || '0 * * * *';
+const rawCron = process.env.CHECK_INTERVAL_CRON;
+const cronExpression = (rawCron && !rawCron.includes('activate')) ? rawCron : '0 * * * *';
 console.log(`\n📆 Scheduler set: "${cronExpression}"`);
 cron.schedule(cronExpression, () => runCheck(false));
 

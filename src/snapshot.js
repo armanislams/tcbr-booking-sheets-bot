@@ -6,6 +6,7 @@ const { rowKey, findHeaderRowIndex } = require('./detector');
 const DATA_DIR     = path.join(__dirname, '..', 'data');
 const SNAPSHOT_FILE = path.join(DATA_DIR, 'snapshot.json');
 const HISTORY_FILE  = path.join(DATA_DIR, 'change_history.json');
+const STATS_FILE    = path.join(DATA_DIR, 'stats.json');
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -51,6 +52,18 @@ async function getDb() {
     db = mongoClient.db();
     console.log('   ✅ Connected to MongoDB successfully');
     dbStatus = { connected: true, type: 'mongodb', error: null };
+    
+    // Create TTL Index for history collection - 14 days (1209600 seconds)
+    try {
+      await db.collection('history').createIndex(
+        { createdAt: 1 },
+        { expireAfterSeconds: 14 * 24 * 60 * 60 }
+      );
+      console.log('   ✅ MongoDB history TTL index verified (14 days)');
+    } catch (indexErr) {
+      console.error('   ⚠️ Failed to create history TTL index:', indexErr.message);
+    }
+
     return db;
   } catch (err) {
     console.error('   ❌ Failed to connect to MongoDB:', err.message);
@@ -169,6 +182,9 @@ async function appendHistory(event) {
   cachedHistory = null;
   lastHistoryLoadTime = 0;
 
+  // Increment the total checks count
+  await incrementTotalChecks();
+
   const db = await getDb();
   if (db) {
     try {
@@ -187,8 +203,12 @@ async function appendHistory(event) {
 
   history.unshift(event); // newest first
 
-  // Keep only last 500 events
-  if (history.length > 500) history = history.slice(0, 500);
+  // Local fallback: keep only last 14 days
+  const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+  history = history.filter(h => {
+    const dateToCheck = h.checkedAt ? new Date(h.checkedAt) : new Date(h.createdAt);
+    return dateToCheck >= cutoff;
+  });
 
   fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf-8');
 }
@@ -292,7 +312,8 @@ async function loadHistory() {
   if (db) {
     try {
       const collection = db.collection('history');
-      const docs = await collection.find({}).sort({ checkedAt: -1 }).limit(500).toArray();
+      // Set a larger limit since documents naturally expire after 14 days via TTL index
+      const docs = await collection.find({}).sort({ checkedAt: -1 }).limit(3000).toArray();
       
       const mapped = docs.map(doc => {
         const { _id, ...rest } = doc;
@@ -309,7 +330,13 @@ async function loadHistory() {
 
   if (!fs.existsSync(HISTORY_FILE)) return [];
   try {
-    const data = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf-8'));
+    let data = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf-8'));
+    // Local fallback: keep only last 14 days
+    const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    data = data.filter(h => {
+      const dateToCheck = h.checkedAt ? new Date(h.checkedAt) : new Date(h.createdAt);
+      return dateToCheck >= cutoff;
+    });
     cachedHistory = data;
     lastHistoryLoadTime = now;
     return data;
@@ -399,4 +426,65 @@ async function clearMonthData() {
   console.log('   🗑️  Local history and snapshot cleared.');
 }
 
-module.exports = { loadSnapshot, saveSnapshot, appendHistory, appendVerification, getVerifications, loadHistory, getDbStatus, acknowledgeEvent, clearMonthData };
+async function incrementTotalChecks() {
+  const db = await getDb();
+  if (db) {
+    try {
+      const collection = db.collection('stats');
+      await collection.updateOne(
+        { _id: 'global' },
+        { $inc: { totalChecks: 1 } },
+        { upsert: true }
+      );
+      return;
+    } catch (err) {
+      console.error('   ❌ MongoDB incrementTotalChecks error:', err.message);
+    }
+  }
+
+  let total = 0;
+  if (fs.existsSync(STATS_FILE)) {
+    try {
+      const content = JSON.parse(fs.readFileSync(STATS_FILE, 'utf-8'));
+      total = content.totalChecks || 0;
+    } catch {}
+  }
+  total++;
+  fs.writeFileSync(STATS_FILE, JSON.stringify({ totalChecks: total }, null, 2), 'utf-8');
+}
+
+async function getTotalChecksCount() {
+  const db = await getDb();
+  if (db) {
+    try {
+      const collection = db.collection('stats');
+      const doc = await collection.findOne({ _id: 'global' });
+      return doc ? (doc.totalChecks || 0) : 0;
+    } catch (err) {
+      console.error('   ❌ MongoDB getTotalChecksCount error:', err.message);
+      return 0;
+    }
+  }
+
+  if (!fs.existsSync(STATS_FILE)) return 0;
+  try {
+    const content = JSON.parse(fs.readFileSync(STATS_FILE, 'utf-8'));
+    return content.totalChecks || 0;
+  } catch {
+    return 0;
+  }
+}
+
+module.exports = {
+  loadSnapshot,
+  saveSnapshot,
+  appendHistory,
+  appendVerification,
+  getVerifications,
+  loadHistory,
+  getDbStatus,
+  acknowledgeEvent,
+  clearMonthData,
+  incrementTotalChecks,
+  getTotalChecksCount
+};
