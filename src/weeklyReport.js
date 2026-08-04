@@ -52,8 +52,8 @@ function parsePax(str) {
   let children = 0;
   let babies = 0;
 
-  // 2. Identify "instructor" entries and categorize them as Adult (A)
-  const instructorRegex = /\+?\s*(\d*)\s*instructor/i;
+  // 2. Identify "instructor" entries and categorize them as Adult (A) (handles typos)
+  const instructorRegex = /\+?\s*(\d*)\s*(?:i[nst]+[ruoc]*t[oers]{1,4})\b/i;
   let instructorMatch = s.match(instructorRegex);
   while (instructorMatch) {
     const countStr = instructorMatch[1];
@@ -99,8 +99,8 @@ function parseDivingPax(str) {
   let children = 0;
   let babies = 0;
 
-  // 2. Identify "instructor" entries and categorize them as Adult (A)
-  const instructorRegex = /\+?\s*(\d*)\s*instructor/i;
+  // 2. Identify "instructor" entries and categorize them as Adult (A) (handles typos)
+  const instructorRegex = /\+?\s*(\d*)\s*(?:i[nst]+[ruoc]*t[oers]{1,4})\b/i;
   let instructorMatch = s.match(instructorRegex);
   while (instructorMatch) {
     const countStr = instructorMatch[1];
