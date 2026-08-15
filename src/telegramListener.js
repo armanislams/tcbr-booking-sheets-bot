@@ -10,10 +10,18 @@ const processedUpdateIds = new Set();
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
+const { isTelegramDisabled } = require('./telegram');
+
 /**
  * Sends a message back to a specific Telegram chat.
  */
 async function sendDirectMessage(chatId, text) {
+  if (isTelegramDisabled()) {
+    const preview = (text || '').replace(/\n/g, ' ').substring(0, 80);
+    console.log(`   ℹ️  [DEV MODE] Telegram direct reply suppressed (${chatId}): ${preview}...`);
+    return;
+  }
+
   if (!BOT_TOKEN) return;
   const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
   try {
