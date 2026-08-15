@@ -9,7 +9,7 @@ const { sendTelegramAlert, isTelegramDisabled } = require('./src/telegram');
 const { loadSnapshot, saveSnapshot, appendHistory, clearMonthData } = require('./src/snapshot');
 const { checkAndSend30DayReminders } = require('./src/reminders');
 const { sendWeeklyReport, affectsReportWindow, getChangedDates, buildReport } = require('./src/weeklyReport');
-const { isQuietHours } = require('./src/quietHours');
+const { isQuietHours, isReportQuietHours } = require('./src/quietHours');
 
 console.log('🤖 Sheets Monitor Bot starting...');
 
@@ -156,8 +156,8 @@ async function runCheck(forceReminders = false, isManual = false, isRetry = fals
       const datesShifted = lastDates.length === 0 || 
                            currentDates.some(d => !lastDates.includes(d));
 
-      // Restrict report updates during quiet hours (10:00 PM to 8:00 AM KL time) to avoid disturbing people
-      const { isQuiet, klHour } = isQuietHours();
+      // Restrict report updates during report quiet hours (10:00 PM to 10:00 AM KL time) to send at 10:00 AM
+      const { isQuiet, klHour } = isReportQuietHours();
 
       if (isQuiet && !isManual) {
         // If there's a reason to update, flag it so the next non-quiet run picks it up
@@ -268,12 +268,12 @@ cron.schedule('0 0 1 * *', async () => {
   timezone: 'Asia/Kuala_Lumpur'
 });
 
-// Weekly 10-day customer report: every Saturday at 11:00 AM KL time
+// Weekly 10-day customer report: every Saturday at 10:00 AM KL time
 if (REPORT_CHAT_ID) {
-  console.log('📆 Weekly 10-day report job scheduled (Saturday 11:00 AM KL)');
-  cron.schedule('0 11 * * 6', async () => {
+  console.log('📆 Weekly 10-day report job scheduled (Saturday 10:00 AM KL)');
+  cron.schedule('0 10 * * 6', async () => {
     console.log('\n📋 [Saturday Report] Generating 10-day customer report...');
-    const { isQuiet, klHour } = isQuietHours();
+    const { isQuiet, klHour } = isReportQuietHours();
     if (isQuiet) {
       console.log(`   ℹ️ Skipping Saturday report during quiet hours (${klHour}:00 KL time).`);
       return;
