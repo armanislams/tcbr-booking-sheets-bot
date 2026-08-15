@@ -91,43 +91,50 @@ function parsePax(str) {
 function parseDivingPax(str) {
   if (!str || typeof str !== 'string') return { a: 0, c: 0, b: 0 };
 
-  // 1. Remove the first set of parentheses (if any) to ignore its numeric data (e.g. dive counts)
-  let s = str.replace(/\([^)]*\)/, '').trim();
+  // 1. Remove parenthetical text (e.g. dive counts)
+  let s = str.replace(/\([^)]*\)/g, '').trim();
   if (!s) return { a: 0, c: 0, b: 0 };
 
   let adults = 0;
   let children = 0;
   let babies = 0;
 
-  // 2. Identify "instructor" entries and categorize them as Adult (A) (handles typos)
-  const instructorRegex = /\+?\s*(\d*)\s*(?:i[nst]+[ruoc]*t[oers]{1,4})\b/i;
-  let instructorMatch = s.match(instructorRegex);
-  while (instructorMatch) {
+  // 2. Identify Dive Master / DM entries
+  const dmRegex = /\+?\s*(\d*)\s*(?:dm|divemaster|dive\s*master)\b/gi;
+  let dmMatch;
+  while ((dmMatch = dmRegex.exec(s)) !== null) {
+    const countStr = dmMatch[1];
+    const count = countStr ? parseInt(countStr, 10) : 1;
+    adults += count;
+  }
+  s = s.replace(dmRegex, ' ').trim();
+
+  // 3. Identify "instructor" entries and categorize them as Adult (A) (handles typos)
+  const instructorRegex = /\+?\s*(\d*)\s*(?:i[nst]+[ruoc]*t[oers]{0,4}|ins|inst|instructor|instructors)\b/gi;
+  let instructorMatch;
+  while ((instructorMatch = instructorRegex.exec(s)) !== null) {
     const countStr = instructorMatch[1];
     const count = countStr ? parseInt(countStr, 10) : 1;
     adults += count;
-    // Remove this instructor match to avoid double-processing
-    s = s.replace(instructorMatch[0], '').trim();
-    instructorMatch = s.match(instructorRegex);
   }
+  s = s.replace(instructorRegex, ' ').trim();
 
-  // 3. Regular parsing logic
-  // Try "NUMBER A" or just "A" pattern (with optional space, case insensitive)
-  const numA = s.match(/(\d+)\s*A(?=\s|$|[^A-Za-z])/i);
-  if (numA) {
-    adults += parseInt(numA[1], 10);
+  // 4. Match all "NUMBER A" patterns (e.g. "7A", "1A")
+  const matchesA = Array.from(s.matchAll(/(\d+)\s*A(?=\s|$|[^A-Za-z])/gi));
+  if (matchesA.length > 0) {
+    for (const m of matchesA) {
+      adults += parseInt(m[1], 10);
+    }
   } else if (/\bA\b/i.test(s)) {
-    // Just "A" with no leading number → default to 1
     adults += 1;
   } else {
-    // No "A" found — try bare number at start: "5 dives", "2", etc.
     const bareNum = s.match(/^(\d+)/);
     if (bareNum) {
       adults += parseInt(bareNum[1], 10);
     }
   }
 
-  // Also check for C/B patterns in case diving has children/babies
+  // 5. Also check for C/B patterns
   const numC = s.match(/(\d+)\s*C\b/i);
   const numB = s.match(/(\d+)\s*Baby\b/i);
   if (numC) children += parseInt(numC[1], 10);
