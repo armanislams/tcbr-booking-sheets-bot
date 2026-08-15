@@ -539,9 +539,189 @@
       transform: translateY(-5px) scale(1.05);
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 20px var(--accent);
     }
-    .scroll-to-top.visible {
+    /* ── Security Announcement Header Badge & Modal ── */
+    .sec-notice-btn {
+      padding: 6px 12px;
+      background: linear-gradient(135deg, rgba(210, 153, 34, 0.15), rgba(248, 81, 73, 0.15));
+      border: 1px solid rgba(210, 153, 34, 0.4);
+      color: #f2cc60;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.25s ease;
+      margin-right: 4px;
+      box-shadow: 0 0 12px rgba(210, 153, 34, 0.15);
+    }
+    .sec-notice-btn:hover {
+      background: linear-gradient(135deg, rgba(210, 153, 34, 0.25), rgba(248, 81, 73, 0.25));
+      border-color: rgba(210, 153, 34, 0.7);
+      transform: translateY(-1px);
+      box-shadow: 0 0 16px rgba(210, 153, 34, 0.3);
+    }
+    .sec-notice-btn .pulse-icon {
+      font-size: 0.85rem;
+      animation: alertPulse 2s infinite;
+    }
+    @keyframes alertPulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.18); }
+    }
+
+    /* Modal Backdrop & Dialog Container */
+    .modal-backdrop {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(13, 17, 23, 0.85);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .modal-backdrop.visible {
       opacity: 1;
-      visibility: visible;
+      pointer-events: auto;
+    }
+
+    .auth-modal {
+      background: #161b22;
+      border: 1px solid rgba(210, 153, 34, 0.35);
+      border-radius: 16px;
+      max-width: 560px;
+      width: 100%;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 40px rgba(210, 153, 34, 0.12);
+      transform: translateY(24px) scale(0.96);
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      overflow: hidden;
+      position: relative;
+    }
+    .modal-backdrop.visible .auth-modal {
+      transform: translateY(0) scale(1);
+    }
+
+    .modal-header-banner {
+      background: linear-gradient(135deg, rgba(210, 153, 34, 0.2) 0%, rgba(88, 166, 255, 0.1) 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 24px 28px 20px;
+      position: relative;
+    }
+    .modal-close-btn {
+      position: absolute;
+      top: 18px; right: 20px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-size: 1.2rem;
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    .modal-close-btn:hover {
+      background: rgba(248, 81, 73, 0.2);
+      color: var(--red);
+      border-color: rgba(248, 81, 73, 0.4);
+    }
+
+    .modal-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: rgba(210, 153, 34, 0.2);
+      border: 1px solid rgba(210, 153, 34, 0.4);
+      color: #f2cc60;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 12px;
+    }
+    .modal-title {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.3;
+    }
+    .modal-body {
+      padding: 24px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .modal-section {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .modal-icon-box {
+      width: 42px; height: 42px;
+      border-radius: 10px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.3rem;
+      flex-shrink: 0;
+    }
+    .modal-section-content h4 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+    .modal-section-content p {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      line-height: 1.55;
+    }
+    .date-highlight {
+      color: #58a6ff;
+      font-weight: 600;
+      background: rgba(88, 166, 255, 0.15);
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(88, 166, 255, 0.3);
+    }
+    .modal-footer {
+      padding: 16px 28px 24px;
+      border-top: 1px solid var(--border-light);
+      background: var(--bg-primary);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .modal-footer-note {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+    .modal-primary-btn {
+      padding: 10px 24px;
+      background: linear-gradient(135deg, #238636, #2ea043);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(46, 160, 67, 0.25);
+    }
+    .modal-primary-btn:hover {
+      background: linear-gradient(135deg, #2ea043, #3fb950);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(46, 160, 67, 0.35);
     }
   </style>
 </head>
@@ -556,6 +736,9 @@
       <div class="status-dot" title="Bot is running"></div>
     </div>
     <div class="header-right">
+      <button class="sec-notice-btn" onclick="openAuthNoticeModal()" title="View Privacy & Security Update Notice">
+        <span class="pulse-icon">🔒</span> Auth Required Aug 21
+      </button>
       <span id="db-status-badge" class="type-badge" style="cursor: help; text-transform: none; display: inline-flex; align-items: center; gap: 4px;" title="Checking database...">Database: —</span>
       Last check: <span id="last-check-time">—</span>
       <button class="refresh-btn" id="install-btn" style="display: none; background: rgba(63,185,80,0.1); color: var(--green); border-color: rgba(63,185,80,0.3); margin-right: 8px;">
@@ -663,6 +846,50 @@
   </div>
 
 </main>
+
+<!-- ── Security & Privacy Announcement Modal ── -->
+<div class="modal-backdrop" id="auth-notice-backdrop" onclick="handleBackdropClick(event)">
+  <div class="auth-modal" role="dialog" aria-labelledby="auth-modal-title" aria-modal="true">
+    <div class="modal-header-banner">
+      <button class="modal-close-btn" onclick="closeAuthNoticeModalTemporarily()" aria-label="Close modal">✕</button>
+      <div class="modal-badge">
+        <span>🔒 Important Privacy & Security Update</span>
+      </div>
+      <h2 class="modal-title" id="auth-modal-title">Mandatory Authentication Notice</h2>
+    </div>
+
+    <div class="modal-body">
+      <div class="modal-section">
+        <div class="modal-icon-box">🛡️</div>
+        <div class="modal-section-content">
+          <h4>Why is this change happening?</h4>
+          <p>To enhance data privacy, safeguard booking records, and comply with security policies, access to this dashboard will soon require user login authentication.</p>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-icon-box">📅</div>
+        <div class="modal-section-content">
+          <h4>Enforcement Target Date</h4>
+          <p>Mandatory authentication will take effect on <span class="date-highlight">August 21, 2026</span>. Please prepare for this upcoming update.</p>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-icon-box">🔑</div>
+        <div class="modal-section-content">
+          <h4>Self-Registration Account Setup</h4>
+          <p>Starting August 21, a new Login & Registration screen will be activated. All team members can register their own accounts directly on first visit.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <span class="modal-footer-note">You can re-read this notice anytime via the header badge.</span>
+      <button class="modal-primary-btn" onclick="dismissAuthNoticeModal()">I Understand</button>
+    </div>
+  </div>
+</div>
 
 <script>
   let allHistory = [];
@@ -1607,6 +1834,51 @@
       installBtn.style.display = 'none';
     }
     showToast('🎉 App installed successfully!');
+  });
+
+  // ── Privacy & Security Notice Modal Logic ─────────────────────────────
+  const AUTH_NOTICE_KEY = 'privacy_auth_notice_aug21';
+
+  function openAuthNoticeModal() {
+    const backdrop = document.getElementById('auth-notice-backdrop');
+    if (backdrop) {
+      backdrop.classList.add('visible');
+    }
+  }
+
+  function dismissAuthNoticeModal() {
+    localStorage.setItem(AUTH_NOTICE_KEY, 'true');
+    closeAuthNoticeModalTemporarily();
+    if (typeof showToast === 'function') {
+      showToast('👍 Notice acknowledged! You can re-open it anytime from the top header.');
+    }
+  }
+
+  function closeAuthNoticeModalTemporarily() {
+    const backdrop = document.getElementById('auth-notice-backdrop');
+    if (backdrop) {
+      backdrop.classList.remove('visible');
+    }
+  }
+
+  function handleBackdropClick(event) {
+    if (event.target.id === 'auth-notice-backdrop') {
+      closeAuthNoticeModalTemporarily();
+    }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeAuthNoticeModalTemporarily();
+    }
+  });
+
+  // Automatically show popup on first visit if not dismissed yet
+  window.addEventListener('DOMContentLoaded', () => {
+    const isDismissed = localStorage.getItem(AUTH_NOTICE_KEY);
+    if (!isDismissed) {
+      setTimeout(openAuthNoticeModal, 400);
+    }
   });
 
   // ── Auto-refresh every 2 minutes ────────────────────────────────────────────
