@@ -260,6 +260,84 @@ async function fetchRoomMap(monthsToFetch = []) {
   return roomMapByMonth;
 }
 
+function formatRoomDetailsWithDates(code, checkInVal, checkOutVal, roomMap) {
+  if (!code || !checkInVal) return { roomsStr: '—', totalPaxVal: '—' };
+
+  const stayDays = getStayDays(checkInVal, checkOutVal);
+  if (stayDays.length === 0) return { roomsStr: '—', totalPaxVal: '—' };
+
+  const dailyAllocations = [];
+  const allRooms = new Set();
+
+  stayDays.forEach(stay => {
+    const monthMap = roomMap[stay.month] || {};
+    const codeAlloc = monthMap[code] || {};
+    const dayRooms = codeAlloc[stay.day] || {};
+    dailyAllocations.push({
+      dayStr: `${stay.day} ${stay.month.substring(0, 3)}`,
+      day: stay.day,
+      month: stay.month,
+      rooms: dayRooms
+    });
+    Object.keys(dayRooms).forEach(r => allRooms.add(r));
+  });
+
+  if (allRooms.size === 0) return { roomsStr: '—', totalPaxVal: '—' };
+
+  const roomFirstSeen = {};
+  const roomMaxPax = {};
+
+  dailyAllocations.forEach(d => {
+    Object.keys(d.rooms).forEach(r => {
+      if (!roomFirstSeen[r]) roomFirstSeen[r] = d.dayStr;
+      roomMaxPax[r] = Math.max(roomMaxPax[r] || 0, d.rooms[r]);
+    });
+  });
+
+  // Check if any single day has multiple rooms allocated concurrently
+  let hasConcurrentRooms = false;
+  dailyAllocations.forEach(d => {
+    if (Object.keys(d.rooms).length > 1) {
+      hasConcurrentRooms = true;
+    }
+  });
+
+  if (hasConcurrentRooms || allRooms.size === 1) {
+    // Concurrent rooms (e.g. F1 has V104 & B107 on same days) or single room
+    const parts = [];
+    let totalPax = 0;
+    allRooms.forEach(r => {
+      const pax = roomMaxPax[r] || 1;
+      parts.push(`${r} (${pax} Pax)`);
+      totalPax += pax;
+    });
+    return {
+      roomsStr: parts.join(', '),
+      totalPaxVal: totalPax
+    };
+  }
+
+  // True Room Change: rooms occur on separate, non-overlapping days
+  const roomSequence = Array.from(allRooms).map(r => ({
+    room: r,
+    pax: roomMaxPax[r],
+    firstSeen: roomFirstSeen[r]
+  }));
+
+  const changeDates = [];
+  for (let i = 1; i < roomSequence.length; i++) {
+    changeDates.push(`on ${roomSequence[i].firstSeen}`);
+  }
+
+  const transitionStr = roomSequence.map(r => r.room).join(' ➔ ');
+  const changeDateText = changeDates.length > 0 ? ` (Changed ${changeDates.join(', ')})` : '';
+
+  return {
+    roomsStr: `${transitionStr}${changeDateText}`,
+    totalPaxVal: Math.max(...roomSequence.map(r => r.pax))
+  };
+}
+
 /**
  * Enriches spreadsheet rows with room allocation details.
  * Pushes ROOM and ROOM_PAX columns onto the header and matching data rows.
@@ -364,75 +442,9 @@ async function enrichSheetRows(rows) {
       const checkInVal = checkInIndex !== -1 ? (row[checkInIndex] || '') : '';
       const checkOutVal = checkOutIndex !== -1 ? (row[checkOutIndex] || '') : '';
       
-      const stayDays = getStayDays(checkInVal, checkOutVal);
-      const checkInDate = parseDate(checkInVal);
-
-      // 1. Gather rooms occupied on the day before check-in (to identify checkout room changes)
-      let prevDay = null;
-      let prevMonth = null;
-      if (checkInDate) {
-        const prevDate = new Date(checkInDate);
-        prevDate.setDate(prevDate.getDate() - 1);
-        prevDay = prevDate.getDate();
-        const MONTH_NAMES = [
-          'January', 'February', 'March', 'April', 'May', 'June',
-          'July', 'August', 'September', 'October', 'November', 'December'
-        ];
-        prevMonth = MONTH_NAMES[prevDate.getMonth()].toUpperCase();
-      }
-
-      const prevDayRooms = new Set();
-      if (prevDay && prevMonth && roomMap[prevMonth] && roomMap[prevMonth][code]) {
-        const prevAlloc = roomMap[prevMonth][code][prevDay] || {};
-        for (const room in prevAlloc) {
-          prevDayRooms.add(room);
-        }
-      }
-
-      // 2. Gather rooms occupied on subsequent stay days
-      const subsequentRooms = new Set();
-      for (let idx = 1; idx < stayDays.length; idx++) {
-        const stay = stayDays[idx];
-        const monthMap = roomMap[stay.month] || {};
-        const codeAllocations = monthMap[code] || null;
-        if (codeAllocations) {
-          const dayRooms = codeAllocations[stay.day] || {};
-          for (const room in dayRooms) {
-            subsequentRooms.add(room);
-          }
-        }
-      }
-      
-      const roomEntries = {}; // { [room]: maxPax }
-      for (let idx = 0; idx < stayDays.length; idx++) {
-        const stay = stayDays[idx];
-        const monthMap = roomMap[stay.month] || {};
-        const codeAllocations = monthMap[code] || null;
-        if (codeAllocations) {
-          const dayRooms = codeAllocations[stay.day] || {};
-          for (const room in dayRooms) {
-            // If this is the check-in day, the room was occupied the day before, and is NOT occupied on subsequent days,
-            // it is a vacated/checkout room from a room change. Exclude it from this stay's room listing.
-            if (idx === 0 && prevDayRooms.has(room) && subsequentRooms.size > 0 && !subsequentRooms.has(room)) {
-              continue;
-            }
-            roomEntries[room] = Math.max(roomEntries[room] || 0, dayRooms[room]);
-          }
-        }
-      }
-
-      const roomStrings = [];
-      let totalPax = 0;
-      for (const room in roomEntries) {
-        const pax = roomEntries[room];
-        roomStrings.push(`${room} (${pax} Pax)`);
-        totalPax += pax;
-      }
-
-      if (roomStrings.length > 0) {
-        roomsStr = roomStrings.join(', ');
-        totalPaxVal = totalPax;
-      }
+      const res = formatRoomDetailsWithDates(code, checkInVal, checkOutVal, roomMap);
+      roomsStr = res.roomsStr;
+      totalPaxVal = res.totalPaxVal;
     }
 
     while (row.length < headers.length - 2) {
