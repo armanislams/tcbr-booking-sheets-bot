@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <style>
-    :root {
+    :root, :root[data-theme="dark"] {
       --bg-primary:    #0d1117;
       --bg-secondary:  #161b22;
       --bg-card:       #1c2128;
@@ -33,6 +33,48 @@
       --radius-sm:     6px;
     }
 
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        --bg-primary:    #f6f8fa;
+        --bg-secondary:  #ffffff;
+        --bg-card:       #ffffff;
+        --bg-hover:      #f3f4f6;
+        --border:        #d0d7de;
+        --border-light:  #eaeef2;
+        --accent:        #0969da;
+        --accent-glow:   rgba(9, 105, 218, 0.12);
+        --green:         #1a7f37;
+        --green-bg:      rgba(26, 127, 55, 0.1);
+        --yellow:        #9a6700;
+        --yellow-bg:     rgba(154, 103, 0, 0.1);
+        --red:           #cf222e;
+        --red-bg:        rgba(207, 34, 46, 0.1);
+        --text-primary:  #1f2328;
+        --text-secondary:#57606a;
+        --text-muted:    #8c959f;
+      }
+    }
+
+    :root[data-theme="light"] {
+      --bg-primary:    #f6f8fa;
+      --bg-secondary:  #ffffff;
+      --bg-card:       #ffffff;
+      --bg-hover:      #f3f4f6;
+      --border:        #d0d7de;
+      --border-light:  #eaeef2;
+      --accent:        #0969da;
+      --accent-glow:   rgba(9, 105, 218, 0.12);
+      --green:         #1a7f37;
+      --green-bg:      rgba(26, 127, 55, 0.1);
+      --yellow:        #9a6700;
+      --yellow-bg:     rgba(154, 103, 0, 0.1);
+      --red:           #cf222e;
+      --red-bg:        rgba(207, 34, 46, 0.1);
+      --text-primary:  #1f2328;
+      --text-secondary:#57606a;
+      --text-muted:    #8c959f;
+    }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
@@ -47,48 +89,119 @@
     .header {
       background: var(--bg-secondary);
       border-bottom: 1px solid var(--border);
-      padding: 0 32px;
+      padding: 0 24px;
       position: sticky;
       top: 0;
       z-index: 100;
       backdrop-filter: blur(12px);
     }
     .header-inner {
-      max-width: 1200px;
+      max-width: 1240px;
       margin: 0 auto;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 60px;
+      height: 64px;
+      gap: 16px;
     }
     .logo {
       display: flex;
       align-items: center;
       gap: 10px;
       font-size: 1rem;
-      font-weight: 600;
+      font-weight: 700;
       color: var(--text-primary);
+      white-space: nowrap;
     }
     .logo-icon { font-size: 1.3rem; }
+    .brand-title { font-weight: 700; letter-spacing: -0.01em; }
+    
     .status-dot {
       width: 8px; height: 8px;
       border-radius: 50%;
       background: var(--green);
       box-shadow: 0 0 8px var(--green);
       animation: pulse 2s infinite;
+      flex-shrink: 0;
     }
     @keyframes pulse {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.4; }
     }
-    .header-right {
+
+    /* Meta / Status Bar */
+    .header-meta {
       display: flex;
       align-items: center;
-      gap: 16px;
-      font-size: 0.8rem;
-      color: var(--text-secondary);
+      gap: 10px;
+      flex-wrap: wrap;
     }
-    #last-check-time { color: var(--accent); font-weight: 500; }
+    .meta-pill {
+      font-size: 0.76rem;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+    }
+    .sec-notice-pill {
+      font-size: 0.75rem;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: rgba(210, 153, 34, 0.12);
+      color: var(--yellow);
+      border: 1px solid rgba(210, 153, 34, 0.3);
+      cursor: pointer;
+      font-weight: 600;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .sec-notice-pill:hover {
+      background: rgba(210, 153, 34, 0.25);
+    }
+
+    /* Action Buttons */
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+    .action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      font-family: inherit;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .action-btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--accent);
+    }
+    .primary-action-btn {
+      background: var(--accent-glow);
+      color: var(--accent);
+      border-color: rgba(88, 166, 255, 0.3);
+    }
+    .primary-action-btn:hover {
+      background: rgba(88, 166, 255, 0.25);
+      border-color: var(--accent);
+    }
+    .icon-only-btn {
+      padding: 7px 10px;
+    }
 
     /* ── Main Layout ── */
     .main {
@@ -433,19 +546,30 @@
     /* ── Responsive ── */
     @media (max-width: 768px) {
       .main { padding: 16px 12px; }
-      .header { padding: 0 12px; }
+      .header { padding: 8px 16px; }
       .header-inner {
         flex-direction: column;
         height: auto;
-        padding: 12px 0;
-        gap: 8px;
-        align-items: flex-start;
+        padding: 6px 0;
+        gap: 10px;
+        align-items: stretch;
       }
-      .header-right {
-        width: 100%;
+      .header-meta {
+        justify-content: flex-start;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        scrollbar-width: none;
+      }
+      .header-meta::-webkit-scrollbar { display: none; }
+      .header-actions {
         justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 8px;
+        gap: 6px;
+      }
+      .action-btn {
+        flex-grow: 1;
+        justify-content: center;
+        padding: 6px 8px;
+        font-size: 0.78rem;
       }
       
       .stats-grid {
@@ -730,25 +854,35 @@
 <!-- ── Header ── -->
 <header class="header">
   <div class="header-inner">
+    <!-- Brand / Logo -->
     <div class="logo">
       <span class="logo-icon">📊</span>
-      Sheets Monitor Bot
+      <span class="brand-title">Sheets Monitor Bot</span>
       <div class="status-dot" title="Bot is running"></div>
     </div>
-    <div class="header-right">
-      <button class="sec-notice-btn" onclick="openAuthNoticeModal()" title="View Privacy & Security Update Notice">
-        <span class="pulse-icon">🔒</span> Auth Required Aug 21
+
+    <!-- Meta / Status Info Bar -->
+    <div class="header-meta">
+      <span id="db-status-badge" class="meta-pill" title="Checking database...">🔌 DB: —</span>
+      <span class="meta-pill">🕒 Last check: <strong id="last-check-time" style="color:var(--accent)">—</strong></span>
+      <button class="sec-notice-pill" onclick="openAuthNoticeModal()" title="View Privacy & Security Update Notice">
+        🔒 Auth Aug 21
       </button>
-      <span id="db-status-badge" class="type-badge" style="cursor: help; text-transform: none; display: inline-flex; align-items: center; gap: 4px;" title="Checking database...">Database: —</span>
-      Last check: <span id="last-check-time">—</span>
-      <button class="refresh-btn" id="install-btn" style="display: none; background: rgba(63,185,80,0.1); color: var(--green); border-color: rgba(63,185,80,0.3); margin-right: 8px;">
-        <span class="refresh-icon">📲</span> Install App
+    </div>
+
+    <!-- Actions Bar -->
+    <div class="header-actions">
+      <button class="action-btn" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark/Light Mode">
+        <span class="btn-icon">🌓</span> <span class="btn-text">Theme</span>
       </button>
-      <button class="refresh-btn" id="trigger-btn" onclick="triggerManualCheck()" style="background: rgba(88,166,255,0.05); color: var(--accent); border-color: rgba(88,166,255,0.2); margin-right: 8px;">
-        <span class="refresh-icon">⏱</span> Run Check Now
+      <button class="action-btn" id="install-btn" style="display: none; background: rgba(63,185,80,0.1); color: var(--green); border-color: rgba(63,185,80,0.3);" title="Install App">
+        <span class="btn-icon">📲</span> <span class="btn-text">Install</span>
       </button>
-      <button class="refresh-btn" id="refresh-btn" onclick="loadData()">
-        <span class="refresh-icon">↻</span> Refresh
+      <button class="action-btn primary-action-btn" id="trigger-btn" onclick="triggerManualCheck()" title="Run Sheet Check Now">
+        <span class="btn-icon">⏱</span> <span class="btn-text">Run Check</span>
+      </button>
+      <button class="action-btn icon-only-btn" id="refresh-btn" onclick="loadData()" title="Refresh Dashboard">
+        <span class="btn-icon">↻</span>
       </button>
     </div>
   </div>
@@ -759,6 +893,11 @@
 
   <!-- Stats -->
   <div class="stats-grid">
+    <div class="stat-card green" id="stat-card-inhouse">
+      <div class="stat-label">In-House Guests</div>
+      <div class="stat-value" id="stat-inhouse">—</div>
+      <div class="stat-sub" id="stat-inhouse-sub">On selected date</div>
+    </div>
     <div class="stat-card blue">
       <div class="stat-label">Total Checks</div>
       <div class="stat-value" id="stat-total">—</div>
@@ -797,9 +936,10 @@
   </div>
 
   <!-- Search and Date Filter (shared) -->
+  <!-- Search and Date Filter (shared) -->
   <div class="search-bar" style="margin-bottom: 24px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; background: var(--bg-card); border: 1px solid var(--border); padding: 14px 18px; border-radius: var(--radius);">
     <div style="position: relative; flex-grow: 2; min-width: 280px;">
-      <input type="text" id="search-input" class="search-input-field" placeholder="Search by name, check-in, or check-out (e.g. Jolene, 30th May)..." oninput="handleSearch()" style="width: 100%; padding: 8px 12px 8px 36px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-family: inherit; font-size: 0.85rem; outline: none; transition: border-color 0.2s;">
+      <input type="text" id="search-input" class="search-input-field" placeholder="Search by booking code, name, check-in, or check-out (e.g. TCB-101, Jolene, 30th May)..." oninput="handleSearch()" style="width: 100%; padding: 8px 12px 8px 36px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-family: inherit; font-size: 0.85rem; outline: none; transition: border-color 0.2s;">
       <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); font-size: 0.85rem; pointer-events: none;">🔍</span>
     </div>
     <div style="display: flex; gap: 12px; align-items: center; flex-grow: 1; min-width: 450px; justify-content: flex-end; flex-wrap: wrap;">
@@ -829,7 +969,7 @@
           <option value="11">December</option>
         </select>
       </div>
-      <button class="refresh-btn" onclick="clearDateFilters()" style="padding: 7px 12px; font-size: 0.8rem; border-radius: var(--radius-sm);">Clear Dates</button>
+      <button class="refresh-btn" onclick="clearDateFilters()" style="padding: 7px 12px; font-size: 0.8rem; border-radius: var(--radius-sm);">Clear Filters</button>
     </div>
   </div>
 
@@ -838,7 +978,10 @@
     <div class="section-title" id="view-title">
       📋 Change Log
     </div>
-    <span class="badge" id="items-count-badge">0 events</span>
+    <div style="display: flex; gap: 8px; align-items: center;">
+      <span class="badge" id="in-house-count-badge" style="display: none; background: var(--green-bg); color: var(--green); border: 1px solid rgba(63,185,80,0.3); font-weight: 600;">🏠 0 In-House Guests</span>
+      <span class="badge" id="items-count-badge">0 events</span>
+    </div>
   </div>
 
   <div id="changes-list">
@@ -1033,7 +1176,8 @@
       const lastCheck = status.lastCheck
         ? new Date(status.lastCheck).toLocaleString()
         : 'Never';
-      document.getElementById('last-check-time').textContent = lastCheck;
+      const lastCheckEl = document.getElementById('last-check-time');
+      if (lastCheckEl) lastCheckEl.textContent = lastCheck;
 
       // Update Database Status Badge
       const dbBadge = document.getElementById('db-status-badge');
@@ -1179,6 +1323,90 @@
            d1.getDate() === d2.getDate();
   }
 
+  // ── Theme Auto-Detection & Switching ─────────────────────────────
+  function initTheme() {
+    const saved = localStorage.getItem('theme');
+    if (saved) {
+      document.documentElement.setAttribute('data-theme', saved);
+    } else {
+      const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    }
+  }
+
+  function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') || 'dark';
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+  }
+
+  // Initialize theme on page load
+  initTheme();
+
+  // ── In-House Guests Calculation ──────────────────────────────────
+  function updateInHouseStats(targetDate) {
+    const tDate = targetDate ? new Date(targetDate) : new Date();
+    tDate.setHours(0, 0, 0, 0);
+
+    const bookingsList = (allBookings && allBookings.length > 0) ? allBookings : currentBookings;
+    const roomPaxIdx = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM_PAX');
+
+    let totalPax = 0;
+    let totalBookingsInHouse = 0;
+
+    bookingsList.forEach(item => {
+      const rowData = item.row || [];
+      const checkIn = parseClientDate(rowData[7]);
+      const checkOut = parseClientDate(rowData[8]);
+
+      if (!checkIn) return;
+      const cIn = new Date(checkIn);
+      cIn.setHours(0, 0, 0, 0);
+
+      let cOut = checkOut ? new Date(checkOut) : new Date(cIn);
+      cOut.setHours(0, 0, 0, 0);
+
+      let isInHouse = false;
+      if (cOut > cIn) {
+        isInHouse = (tDate >= cIn && tDate < cOut);
+      } else {
+        isInHouse = (tDate.getTime() === cIn.getTime());
+      }
+
+      if (isInHouse) {
+        totalBookingsInHouse++;
+        let pax = 1;
+        if (roomPaxIdx !== -1 && rowData[roomPaxIdx]) {
+          const parsedPax = parseInt(rowData[roomPaxIdx].toString().replace(/\D/g, ''), 10);
+          if (!isNaN(parsedPax) && parsedPax > 0) pax = parsedPax;
+        } else {
+          const s = parseInt((rowData[4] || '').toString().replace(/\D/g, ''), 10) || 0;
+          const d = parseInt((rowData[5] || '').toString().replace(/\D/g, ''), 10) || 0;
+          const c = parseInt((rowData[6] || '').toString().replace(/\D/g, ''), 10) || 0;
+          if (s + d + c > 0) pax = s + d + c;
+        }
+        totalPax += pax;
+      }
+    });
+
+    const statInhouseEl = document.getElementById('stat-inhouse');
+    const statInhouseSubEl = document.getElementById('stat-inhouse-sub');
+    const inHouseBadgeEl = document.getElementById('in-house-count-badge');
+
+    const dateFormatted = tDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    const isToday = isSameDay(tDate, new Date());
+    const dateLabel = isToday ? `Today (${dateFormatted})` : dateFormatted;
+
+    if (statInhouseEl) statInhouseEl.textContent = `${totalPax} Pax`;
+    if (statInhouseSubEl) statInhouseSubEl.textContent = `${totalBookingsInHouse} booking${totalBookingsInHouse !== 1 ? 's' : ''} (${dateLabel})`;
+    
+    if (inHouseBadgeEl) {
+      inHouseBadgeEl.textContent = `🏠 ${totalPax} In-House Guests (${dateLabel})`;
+      inHouseBadgeEl.style.display = (activeTab === 'bookings' || activeTab === 'allbookings') ? 'inline-flex' : 'none';
+    }
+  }
+
   let searchTimeout = null;
   function handleSearch() {
     clearTimeout(searchTimeout);
@@ -1196,9 +1424,11 @@
   }
 
   function clearDateFilters() {
+    const searchEl = document.getElementById('search-input');
     const checkinEl = document.getElementById('checkin-date-input');
     const checkoutEl = document.getElementById('checkout-date-input');
     const monthEl = document.getElementById('month-filter-input');
+    if (searchEl) searchEl.value = '';
     if (checkinEl) checkinEl.value = '';
     if (checkoutEl) checkoutEl.value = '';
     if (monthEl) monthEl.value = '';
@@ -1230,6 +1460,9 @@
     if (checkoutDateVal) {
       parsedCheckOutDate = new Date(checkoutDateVal);
     }
+
+    // Update In-House Guests statistics for the target date
+    updateInHouseStats(parsedCheckInDate);
 
     if (activeTab === 'changelog') {
       // --- Render Change Log ---
@@ -1282,15 +1515,19 @@
           }
 
           const rowData = item.row.row || [];
+          const code = (rowData[1] || '').toString().toLowerCase();
+          const pic = (rowData[2] || '').toString().toLowerCase();
           const name = (rowData[3] || '').toString().toLowerCase();
           const checkInStr = (rowData[7] || '').toString();
           const checkOutStr = (rowData[8] || '').toString();
 
           if (searchQuery) {
+            const matchesCode = code.includes(searchQuery);
+            const matchesPic = pic.includes(searchQuery);
             const matchesName = name.includes(searchQuery);
             const matchesCheckIn = checkInStr.toLowerCase().includes(searchQuery);
             const matchesCheckOut = checkOutStr.toLowerCase().includes(searchQuery);
-            if (!matchesName && !matchesCheckIn && !matchesCheckOut) return false;
+            if (!matchesCode && !matchesPic && !matchesName && !matchesCheckIn && !matchesCheckOut) return false;
           }
 
           if (parsedCheckInDate) {
@@ -1340,15 +1577,19 @@
       if (searchQuery || parsedCheckInDate || parsedCheckOutDate || monthFilterVal !== '') {
         filtered = filtered.filter(item => {
           const rowData = item.row || [];
+          const code = (rowData[1] || '').toString().toLowerCase();
+          const pic = (rowData[2] || '').toString().toLowerCase();
           const name = (rowData[3] || '').toString().toLowerCase();
           const checkInStr = (rowData[7] || '').toString();
           const checkOutStr = (rowData[8] || '').toString();
 
           if (searchQuery) {
+            const matchesCode = code.includes(searchQuery);
+            const matchesPic = pic.includes(searchQuery);
             const matchesName = name.includes(searchQuery);
             const matchesCheckIn = checkInStr.toLowerCase().includes(searchQuery);
             const matchesCheckOut = checkOutStr.toLowerCase().includes(searchQuery);
-            if (!matchesName && !matchesCheckIn && !matchesCheckOut) return false;
+            if (!matchesCode && !matchesPic && !matchesName && !matchesCheckIn && !matchesCheckOut) return false;
           }
 
           if (parsedCheckInDate) {

@@ -1,6 +1,7 @@
 const express = require('express');
 const path    = require('path');
 const { loadHistory, loadSnapshot, getDbStatus, acknowledgeEvent, getTotalChecksCount } = require('./snapshot');
+const { parseDate } = require('./detector');
 
 const app = express();
 
@@ -67,6 +68,80 @@ app.get('/api/all-bookings', async (req, res) => {
     });
   } catch (err) {
     console.error('   ❌ Failed to load all bookings:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// API endpoint to fetch in-house guest stats for a specific date
+app.get('/api/in-house', async (req, res) => {
+  try {
+    const snapshot = await loadSnapshot();
+    if (!snapshot || !snapshot.allRows) {
+      return res.json({ date: req.query.date || null, totalGuests: 0, totalBookings: 0, bookings: [] });
+    }
+
+    const targetDateStr = req.query.date;
+    let targetDate = new Date();
+    if (targetDateStr) {
+      const parsed = parseDate(targetDateStr);
+      if (parsed) targetDate = parsed;
+      else if (!isNaN(new Date(targetDateStr))) targetDate = new Date(targetDateStr);
+    }
+    targetDate.setHours(0, 0, 0, 0);
+
+    const headers = snapshot.headers || [];
+    const roomPaxIdx = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM_PAX');
+
+    const inHouseBookings = [];
+    let totalGuests = 0;
+
+    for (let i = 0; i < snapshot.allRows.length; i++) {
+      const row = snapshot.allRows[i];
+      const checkInStr = row[7];
+      const checkOutStr = row[8];
+      const checkIn = parseDate(checkInStr);
+      const checkOut = parseDate(checkOutStr);
+
+      if (!checkIn) continue;
+
+      const cIn = new Date(checkIn);
+      cIn.setHours(0, 0, 0, 0);
+
+      let cOut = checkOut ? new Date(checkOut) : new Date(cIn);
+      cOut.setHours(0, 0, 0, 0);
+
+      let isInHouse = false;
+      if (cOut > cIn) {
+        isInHouse = (targetDate >= cIn && targetDate < cOut);
+      } else {
+        isInHouse = (targetDate.getTime() === cIn.getTime());
+      }
+
+      if (isInHouse) {
+        let pax = 1;
+        if (roomPaxIdx !== -1 && row[roomPaxIdx]) {
+          const parsedPax = parseInt(row[roomPaxIdx].toString().replace(/\D/g, ''), 10);
+          if (!isNaN(parsedPax) && parsedPax > 0) pax = parsedPax;
+        } else {
+          const s = parseInt((row[4] || '').toString().replace(/\D/g, ''), 10) || 0;
+          const d = parseInt((row[5] || '').toString().replace(/\D/g, ''), 10) || 0;
+          const c = parseInt((row[6] || '').toString().replace(/\D/g, ''), 10) || 0;
+          if (s + d + c > 0) pax = s + d + c;
+        }
+
+        totalGuests += pax;
+        inHouseBookings.push({ row, rowIndex: i, pax });
+      }
+    }
+
+    res.json({
+      date: targetDate.toISOString().split('T')[0],
+      totalGuests,
+      totalBookings: inHouseBookings.length,
+      bookings: inHouseBookings,
+    });
+  } catch (err) {
+    console.error('   ❌ Failed to fetch in-house stats:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
