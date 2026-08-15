@@ -36,6 +36,18 @@ async function fetchWithRetry(url, options, timeoutMs = FETCH_TIMEOUT_MS, retrie
 }
 
 /**
+ * Helper to check if Telegram notifications should be disabled/suppressed.
+ * TG notifications are disabled if:
+ * 1. DISABLE_TELEGRAM=true is explicitly set, OR
+ * 2. NODE_ENV === 'development' (unless ENABLE_TELEGRAM_IN_DEV=true is set).
+ */
+function isTelegramDisabled() {
+  if (process.env.DISABLE_TELEGRAM === 'true') return true;
+  if (process.env.ENABLE_TELEGRAM_IN_DEV === 'true') return false;
+  return process.env.NODE_ENV === 'development';
+}
+
+/**
  * Sends a Telegram message.
  * @param {string} text - The message text (supports Telegram HTML formatting)
  * @param {object} replyMarkup - Optional Telegram reply_markup (e.g. inline keyboard)
@@ -43,6 +55,13 @@ async function fetchWithRetry(url, options, timeoutMs = FETCH_TIMEOUT_MS, retrie
  * @returns {number|null} The message_id of the sent message, or null on failure
  */
 async function sendMessage(text, replyMarkup = null, targetChatId = CHAT_ID, disableNotification = false) {
+  if (isTelegramDisabled()) {
+    const target = targetChatId || CHAT_ID;
+    const preview = (text || '').replace(/\n/g, ' ').substring(0, 80);
+    console.log(`   ℹ️  [DEV MODE] Telegram message suppressed (${target}): ${preview}...`);
+    return Math.floor(Date.now() / 1000);
+  }
+
   if (!BOT_TOKEN || !targetChatId) {
     console.warn('   ⚠️  Telegram not configured. Skipping notification.');
     return null;
@@ -93,6 +112,11 @@ async function sendMessage(text, replyMarkup = null, targetChatId = CHAT_ID, dis
  * @param {number} messageId
  */
 async function deleteMessage(chatId, messageId) {
+  if (isTelegramDisabled()) {
+    console.log(`   ℹ️  [DEV MODE] Telegram deleteMessage suppressed (${chatId}, msg ${messageId})`);
+    return;
+  }
+
   if (!BOT_TOKEN || !chatId || !messageId) return;
 
   const url = `https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`;
@@ -288,6 +312,12 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
  * @returns {boolean} True if successful, false otherwise
  */
 async function editMessageText(chatId, messageId, text, replyMarkup = null) {
+  if (isTelegramDisabled()) {
+    const preview = (text || '').replace(/\n/g, ' ').substring(0, 80);
+    console.log(`   ℹ️  [DEV MODE] Telegram editMessageText suppressed (${chatId}, msg ${messageId}): ${preview}...`);
+    return true;
+  }
+
   if (!BOT_TOKEN || !chatId || !messageId) return false;
 
   const url = `https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`;
@@ -321,4 +351,4 @@ async function editMessageText(chatId, messageId, text, replyMarkup = null) {
   return data?.ok || false;
 }
 
-module.exports = { sendTelegramAlert, sendMessage, deleteMessage, editMessageText };
+module.exports = { sendTelegramAlert, sendMessage, deleteMessage, editMessageText, isTelegramDisabled };
