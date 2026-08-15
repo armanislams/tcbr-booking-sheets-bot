@@ -8,6 +8,15 @@ const app = express();
 
 // Middleware to parse JSON bodies (needed for acknowledgement requests)
 app.use(express.json());
+
+// Set Cache-Control header for API GET requests (60 seconds browser cache)
+app.use('/api', (req, res, next) => {
+  if (req.method === 'GET') {
+    res.setHeader('Cache-Control', 'private, max-age=60, stale-while-revalidate=120');
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 let runCheckCallback = null;
