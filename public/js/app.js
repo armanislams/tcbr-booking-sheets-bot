@@ -18,7 +18,7 @@ async function triggerManualCheck() {
     const data = await res.json();
     
     if (res.ok && data.success) {
-      await loadData();
+      await loadData(true);
       showToast('✅ Sheet check completed successfully!');
     } else {
       showToast('❌ Error: ' + (data.error || 'Failed to complete check.'));
@@ -65,7 +65,7 @@ async function acknowledgeCard(eventId, category, buttonEl, event) {
     });
     
     if (res.ok) {
-      await loadData();
+      await loadData(true);
     } else {
       showToast('❌ Failed to acknowledge event.');
       buttonEl.disabled = false;
@@ -112,9 +112,74 @@ function showToast(msg) {
 let activeTab = 'changelog'; // 'changelog', 'bookings', or 'allbookings'
 let displayLimit = 50; // Client-side pagination limit for rendering speed
 
-// ── Load data from API ──────────────────────────────────────────────────────
-async function loadData() {
+const DASHBOARD_CACHE_KEY = 'sheets_bot_dashboard_cache';
+const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes cache TTL
+
+function applyDashboardData(data) {
+  allHistory = data.history || [];
+  const status = data.status || {};
+
+  const currentBookingsData = data.currentBookings || {};
+  currentBookings = currentBookingsData.bookings || [];
+  bookingsHeaders = currentBookingsData.headers || [];
+
+  const allBookingsData = data.allBookings || {};
+  allBookings = allBookingsData.bookings || [];
+
+  updateStats(status);
+  renderContent();
+
+  const lastCheck = status.lastCheck
+    ? new Date(status.lastCheck).toLocaleString()
+    : 'Never';
+  const lastCheckEl = document.getElementById('last-check-time');
+  if (lastCheckEl) lastCheckEl.textContent = lastCheck;
+
+  // Update Database Status Badge
+  const dbBadge = document.getElementById('db-status-badge');
+  if (dbBadge && status.dbStatus) {
+    if (status.dbStatus.connected) {
+      dbBadge.style.backgroundColor = 'var(--green-bg)';
+      dbBadge.style.color = 'var(--green)';
+      dbBadge.style.borderColor = 'rgba(63,185,80,0.3)';
+      dbBadge.style.borderStyle = 'solid';
+      dbBadge.style.borderWidth = '1px';
+      dbBadge.textContent = '🔌 DB: Connected';
+      dbBadge.title = 'Successfully connected to MongoDB. Data is persistent across restarts.';
+    } else {
+      dbBadge.style.backgroundColor = 'var(--red-bg)';
+      dbBadge.style.color = 'var(--red)';
+      dbBadge.style.borderColor = 'rgba(248,81,73,0.3)';
+      dbBadge.style.borderStyle = 'solid';
+      dbBadge.style.borderWidth = '1px';
+      dbBadge.textContent = '⚠️ DB: Local Fallback';
+      dbBadge.title = 'Using ephemeral local fallback (WARNING: Data will be lost when Render restarts!).\nError: ' + (status.dbStatus.error || 'Unknown error');
+    }
+  }
+}
+
+// ── Load data from API with localStorage caching ────────────────────────────
+async function loadData(forceRefresh = false) {
   const btn = document.getElementById('refresh-btn');
+
+  // Check localStorage cache first if not a forced refresh
+  if (!forceRefresh) {
+    try {
+      const cachedRaw = localStorage.getItem(DASHBOARD_CACHE_KEY);
+      if (cachedRaw) {
+        const cached = JSON.parse(cachedRaw);
+        const age = Date.now() - (cached.timestamp || 0);
+        if (age < CACHE_TTL_MS) {
+          console.log(`⚡ Rendered dashboard instantly from local cache (${Math.round(age / 1000)}s old)`);
+          applyDashboardData(cached);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse dashboard cache:', e);
+    }
+  }
+
   if (btn) btn.classList.add('spinning');
 
   try {
@@ -124,46 +189,27 @@ async function loadData() {
       fetch('/api/current-bookings'),
       fetch('/api/all-bookings'),
     ]);
-    allHistory = await historyRes.json();
+
+    const history = await historyRes.json();
     const status = await statusRes.json();
-    
     const currentBookingsData = await currentBookingsRes.json();
-    currentBookings = currentBookingsData.bookings || [];
-    bookingsHeaders = currentBookingsData.headers || [];
-
     const allBookingsData = await allBookingsRes.json();
-    allBookings = allBookingsData.bookings || [];
 
-    updateStats(status);
-    renderContent();
+    const freshCache = {
+      timestamp: Date.now(),
+      history,
+      status,
+      currentBookings: currentBookingsData,
+      allBookings: allBookingsData,
+    };
 
-    const lastCheck = status.lastCheck
-      ? new Date(status.lastCheck).toLocaleString()
-      : 'Never';
-    const lastCheckEl = document.getElementById('last-check-time');
-    if (lastCheckEl) lastCheckEl.textContent = lastCheck;
-
-    // Update Database Status Badge
-    const dbBadge = document.getElementById('db-status-badge');
-    if (dbBadge && status.dbStatus) {
-      if (status.dbStatus.connected) {
-        dbBadge.style.backgroundColor = 'var(--green-bg)';
-        dbBadge.style.color = 'var(--green)';
-        dbBadge.style.borderColor = 'rgba(63,185,80,0.3)';
-        dbBadge.style.borderStyle = 'solid';
-        dbBadge.style.borderWidth = '1px';
-        dbBadge.textContent = '🔌 DB: Connected';
-        dbBadge.title = 'Successfully connected to MongoDB. Data is persistent across restarts.';
-      } else {
-        dbBadge.style.backgroundColor = 'var(--red-bg)';
-        dbBadge.style.color = 'var(--red)';
-        dbBadge.style.borderColor = 'rgba(248,81,73,0.3)';
-        dbBadge.style.borderStyle = 'solid';
-        dbBadge.style.borderWidth = '1px';
-        dbBadge.textContent = '⚠️ DB: Local Fallback';
-        dbBadge.title = 'Using ephemeral local fallback (WARNING: Data will be lost when Render restarts!).\nError: ' + (status.dbStatus.error || 'Unknown error');
-      }
+    try {
+      localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(freshCache));
+    } catch (e) {
+      console.warn('Failed to save dashboard cache to localStorage:', e);
     }
+
+    applyDashboardData(freshCache);
 
   } catch (err) {
     console.error('Failed to load data:', err);
@@ -1288,4 +1334,4 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // ── Auto-refresh every 2 minutes & initial data load ─────────────────────────
 loadData();
-setInterval(loadData, 120_000);
+setInterval(() => loadData(true), 120_000);
