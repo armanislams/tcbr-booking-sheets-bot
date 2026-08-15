@@ -2,6 +2,7 @@ const express = require('express');
 const path    = require('path');
 const { loadHistory, loadSnapshot, getDbStatus, acknowledgeEvent, getTotalChecksCount } = require('./snapshot');
 const { parseDate } = require('./detector');
+const { parsePax, parseDivingPax, parseCoursePax } = require('./weeklyReport');
 
 const app = express();
 
@@ -72,6 +73,52 @@ app.get('/api/all-bookings', async (req, res) => {
   }
 });
 
+function parsePaxString(str) {
+  if (!str || typeof str !== 'string') return 0;
+  let s = str.replace(/\([^)]*\)/g, '').trim();
+  if (!s) return 0;
+
+  let total = 0;
+
+  // 1. Match DM / Dive Master / Divemaster
+  const dmRegex = /\+?\s*(\d*)\s*(?:dm|divemaster|dive\s*master)\b/gi;
+  let dmMatch;
+  while ((dmMatch = dmRegex.exec(s)) !== null) {
+    const num = dmMatch[1] ? parseInt(dmMatch[1], 10) : 1;
+    total += num;
+  }
+  s = s.replace(dmRegex, ' ').trim();
+
+  // 2. Match Ins / Instructor / Instructors
+  const insRegex = /\+?\s*(\d*)\s*(?:i[nst]+[ruoc]*t[oers]{0,4}|ins|inst|instructor|instructors)\b/gi;
+  let insMatch;
+  while ((insMatch = insRegex.exec(s)) !== null) {
+    const num = insMatch[1] ? parseInt(insMatch[1], 10) : 1;
+    total += num;
+  }
+  s = s.replace(insRegex, ' ').trim();
+
+  // 3. Match remaining numbers
+  const matches = s.matchAll(/(\d+)/g);
+  for (const m of matches) {
+    const val = parseInt(m[1], 10);
+    if (!isNaN(val)) total += val;
+  }
+
+  return total;
+}
+
+function getRowActivityPax(row) {
+  const snork = (row[4] || '').toString();
+  const dive = (row[5] || '').toString();
+  const course = (row[6] || '').toString();
+  
+  const s = parsePax(snork);
+  const d = parseDivingPax(dive);
+  const c = parseCoursePax(course);
+  return (s.a + s.c + s.b) + (d.a + d.c + d.b) + (c.a + c.c + c.b);
+}
+
 // API endpoint to fetch in-house guest stats for a specific date
 app.get('/api/in-house', async (req, res) => {
   try {
@@ -91,12 +138,20 @@ app.get('/api/in-house', async (req, res) => {
 
     const headers = snapshot.headers || [];
     const roomPaxIdx = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM_PAX');
+    const remarkIdx = headers.findIndex(h => h && ['REMARK', 'REMARKS'].includes(h.toString().trim().toUpperCase()));
+    const codeIdx = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'CODE');
 
-    const inHouseBookings = [];
-    let totalGuests = 0;
+    const bookingsByCode = {};
 
     for (let i = 0; i < snapshot.allRows.length; i++) {
-      const row = snapshot.allRows[i];
+      const item = snapshot.allRows[i];
+      const row = item.row || item;
+      
+      const remarkVal = (remarkIdx !== -1 ? (row[remarkIdx] || '') : (row[22] || '')).toString().toLowerCase();
+      if (remarkVal.includes('cancel') || remarkVal.includes('cancle') || remarkVal.includes('cancelled') || remarkVal.includes('postpone') || remarkVal.includes('postponed')) {
+        continue;
+      }
+
       const checkInStr = row[7];
       const checkOutStr = row[8];
       const checkIn = parseDate(checkInStr);
@@ -118,20 +173,46 @@ app.get('/api/in-house', async (req, res) => {
       }
 
       if (isInHouse) {
-        let pax = 1;
-        if (roomPaxIdx !== -1 && row[roomPaxIdx]) {
-          const parsedPax = parseInt(row[roomPaxIdx].toString().replace(/\D/g, ''), 10);
-          if (!isNaN(parsedPax) && parsedPax > 0) pax = parsedPax;
-        } else {
-          const s = parseInt((row[4] || '').toString().replace(/\D/g, ''), 10) || 0;
-          const d = parseInt((row[5] || '').toString().replace(/\D/g, ''), 10) || 0;
-          const c = parseInt((row[6] || '').toString().replace(/\D/g, ''), 10) || 0;
-          if (s + d + c > 0) pax = s + d + c;
+        const rawCode = (codeIdx !== -1 && row[codeIdx]) ? row[codeIdx].toString().trim().toUpperCase() : '';
+        const codeKey = rawCode || `ROW_${i}`;
+
+        if (!bookingsByCode[codeKey]) {
+          bookingsByCode[codeKey] = {
+            code: rawCode,
+            firstRow: row,
+            firstRowIndex: i,
+            totalActivityPax: 0,
+            roomPax: 0
+          };
         }
 
-        totalGuests += pax;
-        inHouseBookings.push({ row, rowIndex: i, pax });
+        bookingsByCode[codeKey].totalActivityPax += getRowActivityPax(row);
+
+        if (roomPaxIdx !== -1 && row[roomPaxIdx] && row[roomPaxIdx] !== '—') {
+          const parsedRoomPax = parsePaxString(row[roomPaxIdx].toString());
+          if (parsedRoomPax > 0 && bookingsByCode[codeKey].roomPax === 0) {
+            bookingsByCode[codeKey].roomPax = parsedRoomPax;
+          }
+        }
       }
+    }
+
+    const inHouseBookings = [];
+    let totalGuests = 0;
+
+    for (const key in bookingsByCode) {
+      const group = bookingsByCode[key];
+
+      // Smart Pax Logic: Activity Pax > Room Pax > Default 1
+      let pax = 1;
+      if (group.totalActivityPax > 0) {
+        pax = group.totalActivityPax;
+      } else if (group.roomPax > 0) {
+        pax = group.roomPax;
+      }
+
+      totalGuests += pax;
+      inHouseBookings.push({ row: group.firstRow, rowIndex: group.firstRowIndex, pax });
     }
 
     res.json({
