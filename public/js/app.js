@@ -401,9 +401,28 @@ function parsePaxString(str) {
 
 function parseSnorkPaxClient(str) {
   if (!str || typeof str !== 'string') return 0;
-  let s = str.replace(/\([^)]*\)/, '').trim();
+  let s = str.replace(/\([^)]*\)/g, '').trim();
   if (!s) return 0;
   let total = 0;
+
+  // 1. Identify Instructor / Ins
+  const insRegex = /\+?\s*(\d*)\s*(?:i[nst]+[ruoc]*t[oers]{0,4}|ins|inst|instructor|instructors)\b/gi;
+  let insMatch;
+  while ((insMatch = insRegex.exec(s)) !== null) {
+    const count = insMatch[1] ? parseInt(insMatch[1], 10) : 1;
+    total += count;
+  }
+  s = s.replace(insRegex, ' ').trim();
+
+  // 2. Identify Dive Master / DM
+  const dmRegex = /\+?\s*(\d*)\s*(?:dm|divemaster|dive\s*master)\b/gi;
+  let dmMatch;
+  while ((dmMatch = dmRegex.exec(s)) !== null) {
+    const count = dmMatch[1] ? parseInt(dmMatch[1], 10) : 1;
+    total += count;
+  }
+  s = s.replace(dmRegex, ' ').trim();
+
   const numA = s.match(/(\d+)\s*A(?=\s|$|[^A-Za-z])/i);
   const numC = s.match(/(\d+)\s*C(?=\s|$|[^A-Za-z])/i);
   const numB = s.match(/(\d+)\s*Baby\b/i);
