@@ -495,13 +495,8 @@ async function updateBookingOverride(req, res) {
     }
 
     let finalKey = inputKey;
-    const snapshot = await loadSnapshot();
-
-    if (!finalKey && typeof rowIndex === 'number' && snapshot && snapshot.allRows) {
-      const match = snapshot.allRows.find(r => r.rowIndex === rowIndex);
-      if (match) {
-        finalKey = getBookingKey(match.row, snapshot.headers, match.rowIndex);
-      }
+    if (typeof rowIndex === 'number') {
+      finalKey = `ROW_${rowIndex}`;
     }
 
     if (!finalKey) {

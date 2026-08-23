@@ -147,10 +147,13 @@ function getOverriddenValue(overrideFields, headerName) {
 
 /**
  * Helper to get unique key for a row.
- * Prefers CODE (e.g. "K6", "F1"), fallback to name/row index.
+ * Ties override strictly to the row's unique index to prevent duplicate cards.
  */
 function getBookingKey(row, headers, rowIndex) {
-  if (!headers || !row) return `ROW_${rowIndex}`;
+  if (rowIndex !== undefined && rowIndex !== null) {
+    return `ROW_${rowIndex}`;
+  }
+  if (!headers || !row) return `ROW_0`;
   const codeIdx = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'CODE');
   if (codeIdx !== -1 && row[codeIdx]) {
     const code = row[codeIdx].toString().trim().toUpperCase();
@@ -158,10 +161,7 @@ function getBookingKey(row, headers, rowIndex) {
       return `CODE_${code}`;
     }
   }
-  const nameIdx = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'NAME');
-  const name = (nameIdx !== -1 && row[nameIdx]) ? row[nameIdx].toString().trim().toLowerCase() : '';
-  if (name) return `NAME_${name}_ROW_${rowIndex}`;
-  return `ROW_${rowIndex}`;
+  return `ROW_0`;
 }
 
 /**

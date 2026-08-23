@@ -2198,10 +2198,7 @@ function openEditBookingModal(rowData, headers, rowIndex, overrideMeta, isOverri
     return idx !== -1 ? (rowData[idx] || '') : '';
   };
 
-  const codeVal = getColVal('CODE');
-  const cleanCode = (codeVal && codeVal !== '—' && codeVal !== '-' && codeVal !== 'N/A') ? codeVal.toUpperCase() : '';
-  const nameVal = getColVal('NAME');
-  const key = cleanCode ? `CODE_${cleanCode}` : (nameVal ? `NAME_${nameVal.toLowerCase()}_ROW_${rowIndex}` : `ROW_${rowIndex}`);
+  const key = `ROW_${rowIndex}`;
   currentEditingBookingKey = key;
   currentEditingRowIndex = rowIndex;
 
