@@ -10,6 +10,7 @@ const { loadSnapshot, saveSnapshot, appendHistory, clearMonthData } = require('.
 const { checkAndSend30DayReminders } = require('./src/reminders');
 const { sendWeeklyReport, affectsReportWindow, getChangedDates, buildReport } = require('./src/weeklyReport');
 const { isQuietHours, isReportQuietHours } = require('./src/quietHours');
+const { getOrLoadConfig } = require('./src/adminController');
 
 console.log('🤖 Sheets Monitor Bot starting...');
 
@@ -30,12 +31,14 @@ let pendingReportUpdate = false; // true when a report update was deferred due t
 
 // ─── Channel configuration logging ──────────────────────────────────────────
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID;
 const REMINDER_CHANNEL_ID = process.env.TELEGRAM_REMINDER_CHANNEL_ID;
 
 console.log('\n📡 System & Channel Configuration:');
 console.log(`   NODE_ENV:                     ${process.env.NODE_ENV || 'production (default)'}`);
 console.log(`   TELEGRAM NOTIFICATIONS:        ${isTelegramDisabled() ? '⚠️ DISABLED / SUPPRESSED (Dev Mode)' : '🟢 ENABLED'}`);
 console.log(`   TELEGRAM_CHAT_ID:             ${CHAT_ID ? `${CHAT_ID.slice(0, 6)}...${CHAT_ID.slice(-4)}` : '❌ NOT SET'}`);
+console.log(`   TELEGRAM_ADMIN_CHAT_ID:       ${ADMIN_CHAT_ID ? `${ADMIN_CHAT_ID.slice(0, 6)}...${ADMIN_CHAT_ID.slice(-4)}` : 'ℹ️ NOT SET (Falling back to TELEGRAM_CHAT_ID)'}`);
 console.log(`   TELEGRAM_REPORT_CHAT_ID:      ${REPORT_CHAT_ID ? `${REPORT_CHAT_ID.slice(0, 6)}...${REPORT_CHAT_ID.slice(-4)}` : '❌ NOT SET'}`);
 console.log(`   TELEGRAM_REMINDER_CHANNEL_ID: ${REMINDER_CHANNEL_ID ? `${REMINDER_CHANNEL_ID.slice(0, 6)}...${REMINDER_CHANNEL_ID.slice(-4)}` : '❌ NOT SET'}`);
 
@@ -49,6 +52,12 @@ if (!REPORT_CHAT_ID) {
 
 // ─── Run check job ──────────────────────────────────────────────────────────
 async function runCheck(forceReminders = false, isManual = false, isRetry = false) {
+  const botConfig = await getOrLoadConfig();
+  if (botConfig.isPaused && !isManual) {
+    console.log('   ⏸  Bot automated check loop is currently PAUSED by Admin. Skipping check.');
+    return;
+  }
+
   if (isRunning) {
     console.log('   ⚠️  A check is already running. Skipping this request.');
     return;

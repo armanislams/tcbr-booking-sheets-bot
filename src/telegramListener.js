@@ -1,4 +1,4 @@
-const { acknowledgeEvent, loadHistory, loadSnapshot, getDbStatus, appendHistory, appendVerification, getVerifications } = require('./snapshot');
+const { acknowledgeEvent, loadHistory, loadSnapshot, getDbStatus, appendHistory, appendVerification, getVerifications, loadUsers, saveUsers, appendAuditLog } = require('./snapshot');
 const { fetchAndEnrichSheetData, fetchSheetData } = require('./sheets');
 const { sendWeeklyReport, affectsReportWindow, getChangedDates } = require('./weeklyReport');
 const { isQuietHours } = require('./quietHours');
@@ -82,8 +82,57 @@ async function handleTelegramUpdate(update) {
           `• <b>/transfercheck</b> - Check for booking changes and update report.\n` +
           `• <b>/check</b> - Trigger a manual sheet check right now.\n` +
           `• <b>/remind</b> - Trigger manual check and send 30-day reminders.\n` +
+          `• <b>/pending</b> - List registration requests pending approval.\n` +
+          `• <b>/approve &lt;username&gt;</b> - Approve a pending user account.\n` +
           `• <b>/help</b> - View this menu.`;
         await sendDirectMessage(chatId, helpMsg);
+      }
+
+      else if (command === '/pending') {
+        const users = await loadUsers();
+        const pendingUsers = users.filter(u => u.approved === false);
+
+        if (pendingUsers.length === 0) {
+          await sendDirectMessage(chatId, 'ℹ️ <b>No registration requests pending approval.</b>');
+        } else {
+          let pendingMsg = `⏳ <b>Pending Account Approvals (${pendingUsers.length})</b>\n`;
+          pendingUsers.forEach((u, i) => {
+            pendingMsg += `\n${i + 1}. <b>${u.displayName || u.username}</b>\n` +
+              `   • Username: <code>${u.username}</code>\n` +
+              `   • Email: ${u.email || u.username}\n` +
+              `   • Approve command: <code>/approve ${u.username}</code>`;
+          });
+          await sendDirectMessage(chatId, pendingMsg);
+        }
+      }
+
+      else if (command === '/approve') {
+        const parts = text.split(' ');
+        const targetInput = parts[1] ? parts[1].trim().toLowerCase() : null;
+
+        if (!targetInput) {
+          await sendDirectMessage(chatId, '⚠️ <b>Usage:</b> <code>/approve &lt;username_or_email&gt;</code>');
+        } else {
+          const users = await loadUsers();
+          const user = users.find(u => u.username.toLowerCase() === targetInput || (u.email && u.email.toLowerCase() === targetInput));
+
+          if (!user) {
+            await sendDirectMessage(chatId, `❌ <b>User not found:</b> <code>${targetInput}</code>`);
+          } else if (user.approved !== false) {
+            await sendDirectMessage(chatId, `ℹ️ <b>User account <code>${user.username}</code> is already approved.</b>`);
+          } else {
+            user.approved = true;
+            await saveUsers(users);
+            const tgUser = message.from.username ? `@${message.from.username}` : message.from.first_name;
+            await appendAuditLog({
+              action: 'USER_APPROVED_VIA_TELEGRAM_COMMAND',
+              username: tgUser,
+              role: 'admin',
+              details: `Approved account for ${user.username} via Telegram command`
+            });
+            await sendDirectMessage(chatId, `✅ <b>Account for <code>${user.username}</code> has been approved by ${tgUser}!</b>`);
+          }
+        }
       }
 
       else if (command === '/status') {
@@ -276,17 +325,121 @@ async function handleTelegramUpdate(update) {
     const message = callbackQuery.message;
     const callbackQueryId = callbackQuery.id;
 
-    if (data === 'noop_rec' || data === 'noop_div') {
+    if (data === 'noop_rec' || data === 'noop_div' || data === 'noop_approved' || data === 'noop_rejected') {
       try {
         await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             callback_query_id: callbackQueryId,
-            text: 'This alert has already been acknowledged.'
+            text: 'This registration request has already been processed.'
           })
         });
       } catch (err) {}
+      return;
+    }
+
+    // ── Handle User Registration Approval / Rejection ──
+    if (data.startsWith('approve_user:') || data.startsWith('reject_user:')) {
+      const isApprove = data.startsWith('approve_user:');
+      const userId = data.substring(isApprove ? 13 : 12);
+      const tgUser = callbackQuery.from.username
+        ? `@${callbackQuery.from.username}`
+        : `${callbackQuery.from.first_name} ${callbackQuery.from.last_name || ''}`.trim();
+
+      const users = await loadUsers();
+      const user = users.find(u => u.id === userId);
+
+      if (isApprove) {
+        if (!user) {
+          try {
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ callback_query_id: callbackQueryId, text: 'User not found or already deleted.' })
+            });
+          } catch {}
+          return;
+        }
+
+        user.approved = true;
+        await saveUsers(users);
+
+        await appendAuditLog({
+          action: 'USER_APPROVED_VIA_TELEGRAM_BUTTON',
+          username: tgUser,
+          role: 'admin',
+          details: `Approved account for ${user.username} via Telegram button click`
+        });
+
+        try {
+          await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ callback_query_id: callbackQueryId, text: `Account ${user.username} Approved! ✅` })
+          });
+        } catch {}
+
+        if (message) {
+          const updatedText = message.text ? message.text.replace(/STATUS:.*$/m, `STATUS: ✅ <b>Approved by ${tgUser}</b>`) : `✅ Account ${user.username} approved by ${tgUser}`;
+          const updatedMarkup = {
+            inline_keyboard: [[{ text: `✅ Approved by ${tgUser}`, callback_data: 'noop_approved' }]]
+          };
+          try {
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                text: updatedText,
+                parse_mode: 'HTML',
+                reply_markup: updatedMarkup
+              })
+            });
+          } catch {}
+        }
+      } else {
+        // Reject user
+        const targetUsername = user ? user.username : 'User';
+        const filteredUsers = users.filter(u => u.id !== userId);
+        await saveUsers(filteredUsers);
+
+        await appendAuditLog({
+          action: 'USER_REJECTED_VIA_TELEGRAM_BUTTON',
+          username: tgUser,
+          role: 'admin',
+          details: `Rejected & deleted account for ${targetUsername} via Telegram button click`
+        });
+
+        try {
+          await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ callback_query_id: callbackQueryId, text: `Account ${targetUsername} Rejected & Deleted ❌` })
+          });
+        } catch {}
+
+        if (message) {
+          const updatedText = message.text ? message.text.replace(/STATUS:.*$/m, `STATUS: ❌ <b>Rejected & Deleted by ${tgUser}</b>`) : `❌ Account ${targetUsername} rejected by ${tgUser}`;
+          const updatedMarkup = {
+            inline_keyboard: [[{ text: `❌ Rejected by ${tgUser}`, callback_data: 'noop_rejected' }]]
+          };
+          try {
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                text: updatedText,
+                parse_mode: 'HTML',
+                reply_markup: updatedMarkup
+              })
+            });
+          } catch {}
+        }
+      }
       return;
     }
 
@@ -513,4 +666,4 @@ async function startTelegramListener(runCheckFn) {
   pollUpdates();
 }
 
-module.exports = { startTelegramListener };
+module.exports = { startTelegramListener, handleTelegramUpdate };
