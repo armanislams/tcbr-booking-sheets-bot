@@ -3,10 +3,12 @@ const path    = require('path');
 const { loadHistory, loadSnapshot, getDbStatus, acknowledgeEvent, getTotalChecksCount } = require('./snapshot');
 const { parseDate } = require('./detector');
 const { parsePax, parseDivingPax, parseCoursePax } = require('./weeklyReport');
+const { initSeedAdmin, loginUser, registerUser, revokeToken, requireAuth, requireAdmin } = require('./auth');
+const admin = require('./adminController');
 
 const app = express();
 
-// Middleware to parse JSON bodies (needed for acknowledgement requests)
+// Middleware to parse JSON bodies
 app.use(express.json());
 
 // Set Cache-Control header for API GET requests (60 seconds browser cache)
@@ -21,18 +23,58 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 let runCheckCallback = null;
 
-// API endpoint for the dashboard to fetch change history
-app.get('/api/history', async (req, res) => {
+// ─── Authentication APIs (Public) ─────────────────────────────────────────────
+
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, email, displayName, password } = req.body;
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    const result = await registerUser({ username, email, displayName, password }, clientIp);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    const result = await loginUser(username, password, clientIp);
+    res.json({ success: true, token: result.token, user: result.user });
+  } catch (err) {
+    res.status(401).json({ error: err.message });
+  }
+});
+
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  res.json({ success: true, user: req.user });
+});
+
+app.post('/api/auth/logout', requireAuth, (req, res) => {
+  if (req.rawToken) revokeToken(req.rawToken);
+  res.json({ success: true, message: 'Logged out successfully.' });
+});
+
+app.post('/api/auth/change-password', requireAuth, admin.changePassword);
+
+// ─── Data & Operational APIs (Protected by requireAuth) ───────────────────────
+
+// Fetch change history
+app.get('/api/history', requireAuth, async (req, res) => {
   const history = await loadHistory();
   res.json(history);
 });
 
-// API endpoint for health check / last check info
-app.get('/api/status', async (req, res) => {
+// Health check / status info
+app.get('/api/status', requireAuth, async (req, res) => {
   const history = await loadHistory();
   const totalChecks = await getTotalChecksCount();
+  const botConfig = await admin.getOrLoadConfig();
   res.json({
-    status: 'running',
+    status: botConfig.isPaused ? 'paused' : 'running',
+    isPaused: botConfig.isPaused,
+    quietHours: { start: botConfig.quietHoursStart, end: botConfig.quietHoursEnd },
     lastCheck: history[0]?.checkedAt || null,
     totalEventsLogged: history.length,
     totalChecks,
@@ -40,15 +82,14 @@ app.get('/api/status', async (req, res) => {
   });
 });
 
-// API endpoint for the dashboard to fetch current month's active bookings
-app.get('/api/current-bookings', async (req, res) => {
+// Current month's active bookings
+app.get('/api/current-bookings', requireAuth, async (req, res) => {
   try {
     const snapshot = await loadSnapshot();
     if (!snapshot) {
       return res.json({ headers: [], bookings: [] });
     }
 
-    // Convert monthMap into a flat list of booking rows
     const bookings = Object.values(snapshot.monthMap || {}).map(entry => ({
       row: entry.row,
       rowIndex: entry.rowIndex,
@@ -64,8 +105,8 @@ app.get('/api/current-bookings', async (req, res) => {
   }
 });
 
-// API endpoint for the dashboard to fetch all bookings from Google Sheet snapshot
-app.get('/api/all-bookings', async (req, res) => {
+// All bookings from Google Sheet snapshot
+app.get('/api/all-bookings', requireAuth, async (req, res) => {
   try {
     const snapshot = await loadSnapshot();
     if (!snapshot) {
@@ -89,7 +130,6 @@ function parsePaxString(str) {
 
   let total = 0;
 
-  // 1. Match DM / Dive Master / Divemaster
   const dmRegex = /\+?\s*(\d*)\s*(?:dm|divemaster|dive\s*master)\b/gi;
   let dmMatch;
   while ((dmMatch = dmRegex.exec(s)) !== null) {
@@ -98,7 +138,6 @@ function parsePaxString(str) {
   }
   s = s.replace(dmRegex, ' ').trim();
 
-  // 2. Match Ins / Instructor / Instructors
   const insRegex = /\+?\s*(\d*)\s*(?:i[nst]+[ruoc]*t[oers]{0,4}|ins|inst|instructor|instructors)\b/gi;
   let insMatch;
   while ((insMatch = insRegex.exec(s)) !== null) {
@@ -107,7 +146,6 @@ function parsePaxString(str) {
   }
   s = s.replace(insRegex, ' ').trim();
 
-  // 3. Match remaining numbers
   const matches = s.matchAll(/(\d+)/g);
   for (const m of matches) {
     const val = parseInt(m[1], 10);
@@ -128,8 +166,8 @@ function getRowActivityPax(row) {
   return (s.a + s.c + s.b) + (d.a + d.c + d.b) + (c.a + c.c + c.b);
 }
 
-// API endpoint to fetch in-house guest stats for a specific date
-app.get('/api/in-house', async (req, res) => {
+// Fetch in-house guest stats for a specific date
+app.get('/api/in-house', requireAuth, async (req, res) => {
   try {
     const snapshot = await loadSnapshot();
     if (!snapshot || !snapshot.allRows) {
@@ -212,7 +250,6 @@ app.get('/api/in-house', async (req, res) => {
     for (const key in bookingsByCode) {
       const group = bookingsByCode[key];
 
-      // Smart Pax Logic: Activity Pax > Room Pax > Default 1
       let pax = 1;
       if (group.totalActivityPax > 0) {
         pax = group.totalActivityPax;
@@ -236,8 +273,8 @@ app.get('/api/in-house', async (req, res) => {
   }
 });
 
-// API endpoint to trigger a manual check on demand from the dashboard
-app.post('/api/check', async (req, res) => {
+// Trigger manual check
+app.post('/api/check', requireAuth, async (req, res) => {
   try {
     if (runCheckCallback) {
       await runCheckCallback(false, true);
@@ -251,15 +288,16 @@ app.post('/api/check', async (req, res) => {
   }
 });
 
-// API endpoint to acknowledge an event from the dashboard
-app.post('/api/history/acknowledge', async (req, res) => {
+// Acknowledge event
+app.post('/api/history/acknowledge', requireAuth, async (req, res) => {
   try {
     const { id, user, category } = req.body;
     if (!id) {
       return res.status(400).json({ error: 'Missing event ID' });
     }
 
-    const success = await acknowledgeEvent(id, user || 'Dashboard User', category || 'reception');
+    const ackUser = user || req.user.username || 'Dashboard User';
+    const success = await acknowledgeEvent(id, ackUser, category || 'reception');
     if (success) {
       res.json({ success: true, message: 'Event acknowledged.' });
     } else {
@@ -271,8 +309,30 @@ app.post('/api/history/acknowledge', async (req, res) => {
   }
 });
 
-function startDashboard(runCheckFn) {
+// Internal notes endpoints
+app.post('/api/notes', requireAuth, admin.createInternalNote);
+app.get('/api/notes', requireAuth, admin.fetchInternalNotes);
+
+// ─── Admin Portal APIs (Protected by requireAuth & requireAdmin) ───────────────
+
+app.get('/api/admin/users', requireAuth, requireAdmin, admin.getUsers);
+app.post('/api/admin/users', requireAuth, requireAdmin, admin.createUser);
+app.post('/api/admin/users/:userId/approve', requireAuth, requireAdmin, admin.approveUser);
+app.delete('/api/admin/users/:userId', requireAuth, requireAdmin, admin.deleteUser);
+
+app.get('/api/admin/bot/settings', requireAuth, requireAdmin, admin.getBotSettings);
+app.post('/api/admin/bot/settings', requireAuth, requireAdmin, admin.updateBotSettings);
+
+app.post('/api/admin/telegram/test', requireAuth, requireAdmin, admin.testTelegramPing);
+app.get('/api/admin/telemetry', requireAuth, requireAdmin, admin.getTelemetryStats);
+app.post('/api/admin/snapshot/reset', requireAuth, requireAdmin, admin.resetSnapshotBaseline);
+app.get('/api/admin/export/:type', requireAuth, requireAdmin, admin.exportData);
+app.get('/api/admin/audit-logs', requireAuth, requireAdmin, admin.getAuditLogsHandler);
+
+async function startDashboard(runCheckFn) {
   runCheckCallback = runCheckFn;
+  await initSeedAdmin(); // Initialize default admin account if needed
+
   const port = parseInt(process.env.PORT || process.env.DASHBOARD_PORT || '3000', 10);
   app.listen(port, () => {
     console.log(`🌐 Dashboard running at http://localhost:${port}`);
