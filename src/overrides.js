@@ -198,14 +198,6 @@ function getBookingKey(row, headers, rowIndex) {
   if (rowIndex !== undefined && rowIndex !== null) {
     return `ROW_${rowIndex}`;
   }
-  if (!headers || !row) return `ROW_0`;
-  const codeIdx = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'CODE');
-  if (codeIdx !== -1 && row[codeIdx]) {
-    const code = row[codeIdx].toString().trim().toUpperCase();
-    if (code && code !== '—' && code !== '-' && code !== 'N/A') {
-      return `CODE_${code}`;
-    }
-  }
   return `ROW_0`;
 }
 
@@ -225,7 +217,11 @@ async function applyOverridesToRows(bookingEntries, headers) {
     const row = isObject ? [...entry.row] : (Array.isArray(entry) ? [...entry] : entry);
     const rowIndex = isObject ? entry.rowIndex : undefined;
 
-    const bookingKey = getBookingKey(row, headers, rowIndex);
+    if (rowIndex === undefined || rowIndex === null) {
+      return entry;
+    }
+
+    const bookingKey = `ROW_${rowIndex}`;
     const override = overrides[bookingKey];
 
     if (!override) return entry;
