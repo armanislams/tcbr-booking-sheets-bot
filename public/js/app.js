@@ -309,50 +309,82 @@ function setFilter(filter) {
   renderContent();
 }
 
+function getMonthIndexFromText(text) {
+  if (!text || typeof text !== 'string') return -1;
+  const lower = text.toLowerCase();
+  if (lower.includes('jan')) return 0;
+  if (lower.includes('feb')) return 1;
+  if (lower.includes('mar')) return 2;
+  if (lower.includes('apr')) return 3;
+  if (lower.includes('may')) return 4;
+  if (lower.includes('jun')) return 5;
+  if (lower.includes('jul')) return 6;
+  if (lower.includes('aug')) return 7;
+  if (lower.includes('sep')) return 8;
+  if (lower.includes('oct')) return 9;
+  if (lower.includes('nov')) return 10;
+  if (lower.includes('dec')) return 11;
+  return -1;
+}
+
 // Helper to parse dates client-side
 function parseClientDate(value) {
   if (!value || typeof value !== 'string') return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
 
-  // Try standard parsing first
-  const d = new Date(trimmed);
-  if (!isNaN(d)) return d;
-
-  // Try dd/mm/yyyy or dd-mm-yyyy
-  const dmyMatch = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (dmyMatch) {
-    const [, day, month, year] = dmyMatch;
-    const parsed = new Date(`${year}-${month.padStart(2,'0')}-${day.padStart(2,'0')}`);
-    if (!isNaN(parsed)) return parsed;
+  // 1. Try standard YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD
+  const ymdMatch = trimmed.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+  if (ymdMatch) {
+    const [, year, month, day] = ymdMatch;
+    const d = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+    if (!isNaN(d)) return d;
   }
 
-  // Handle formats like "30th May", "2nd June", "24thJuly"
+  // 2. Try DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  const dmy4Match = trimmed.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+  if (dmy4Match) {
+    const [, day, month, year] = dmy4Match;
+    const d = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+    if (!isNaN(d)) return d;
+  }
+
+  // 3. Try DD/MM/YY or DD-MM-YY or DD.MM.YY (2-digit year)
+  const dmy2Match = trimmed.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2})$/);
+  if (dmy2Match) {
+    const [, day, month, year2] = dmy2Match;
+    const year = 2000 + parseInt(year2, 10);
+    const d = new Date(year, parseInt(month, 10) - 1, parseInt(day, 10));
+    if (!isNaN(d)) return d;
+  }
+
+  // 4. Try DD/MM or DD-MM or DD.MM (no year)
+  const dmMatch = trimmed.match(/^(\d{1,2})[\/\-\.](\d{1,2})$/);
+  if (dmMatch) {
+    const [, day, month] = dmMatch;
+    const year = new Date().getFullYear();
+    const d = new Date(year, parseInt(month, 10) - 1, parseInt(day, 10));
+    if (!isNaN(d)) return d;
+  }
+
+  // 5. Handle textual formats with ordinal suffixes (e.g. "23rd Aug", "15th Aug", "22nd Aug", "25th AUg")
   const dayMatch = trimmed.match(/^(\d+)/);
   if (dayMatch) {
     const day = parseInt(dayMatch[1], 10);
-    const rest = trimmed.toLowerCase();
-
-    let month = -1;
-    if (rest.includes('jan')) month = 0;
-    else if (rest.includes('feb')) month = 1;
-    else if (rest.includes('mar')) month = 2;
-    else if (rest.includes('apr')) month = 3;
-    else if (rest.includes('may')) month = 4;
-    else if (rest.includes('jun')) month = 5;
-    else if (rest.includes('jul')) month = 6;
-    else if (rest.includes('aug')) month = 7;
-    else if (rest.includes('sep')) month = 8;
-    else if (rest.includes('oct')) month = 9;
-    else if (rest.includes('nov')) month = 10;
-    else if (rest.includes('dec')) month = 11;
-
+    const month = getMonthIndexFromText(trimmed);
     if (month !== -1) {
-      // Assume current year 2026 for textual relative dates
-      const year = 2026;
-      return new Date(year, month, day);
+      const year = new Date().getFullYear();
+      const parsed = new Date(year, month, day);
+      if (!isNaN(parsed)) return parsed;
     }
   }
+
+  // 6. Native parse fallback for strings like "August 23, 2026"
+  const nativeDate = new Date(trimmed);
+  if (!isNaN(nativeDate) && !/^\d+$/.test(trimmed)) {
+    return nativeDate;
+  }
+
   return null;
 }
 
@@ -530,6 +562,8 @@ function updateInHouseStats(targetDate) {
 
   const bookingsList = (allBookings && allBookings.length > 0) ? allBookings : currentBookings;
   const roomPaxIdx = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM_PAX');
+  const checkInIdx = bookingsHeaders.findIndex(h => h && ['CHECK IN', 'CHECK-IN', 'CHECKIN'].includes(h.toString().trim().toUpperCase()));
+  const checkOutIdx = bookingsHeaders.findIndex(h => h && ['CHECK OUT', 'CHECK-OUT', 'CHECKOUT'].includes(h.toString().trim().toUpperCase()));
   const remarkIdx = bookingsHeaders.findIndex(h => h && ['REMARK', 'REMARKS'].includes(h.toString().trim().toUpperCase()));
   const codeIdx = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'CODE');
 
@@ -544,8 +578,8 @@ function updateInHouseStats(targetDate) {
       return;
     }
 
-    const checkIn = parseClientDate(rowData[7]);
-    const checkOut = parseClientDate(rowData[8]);
+    const checkIn = parseClientDate(rowData[checkInIdx !== -1 ? checkInIdx : 7]);
+    const checkOut = parseClientDate(rowData[checkOutIdx !== -1 ? checkOutIdx : 8]);
 
     if (!checkIn) return;
     const cIn = new Date(checkIn);
@@ -592,10 +626,10 @@ function updateInHouseStats(targetDate) {
     totalBookingsInHouse++;
 
     let pax = 1;
-    if (group.totalActivityPax > 0) {
-      pax = group.totalActivityPax;
-    } else if (group.roomPax > 0) {
+    if (group.roomPax > 0) {
       pax = group.roomPax;
+    } else if (group.totalActivityPax > 0) {
+      pax = group.totalActivityPax;
     }
 
     totalPax += pax;
@@ -1138,11 +1172,14 @@ function buildBookingCard(booking, idx) {
   const actPax = getRowActivityPaxClient(rowData);
   let cardPax = booking.pax;
   if (!cardPax) {
-    if (actPax > 0) cardPax = actPax;
-    else if (roomPaxIndex !== -1 && rowData[roomPaxIndex] && rowData[roomPaxIndex] !== '—') {
+    if (roomPaxIndex !== -1 && rowData[roomPaxIndex] && rowData[roomPaxIndex] !== '—') {
       const parsed = parsePaxString(rowData[roomPaxIndex].toString());
-      cardPax = parsed > 0 ? parsed : 1;
-    } else {
+      cardPax = parsed > 0 ? parsed : 0;
+    }
+    if (!cardPax && actPax > 0) {
+      cardPax = actPax;
+    }
+    if (!cardPax) {
       cardPax = 1;
     }
   }
@@ -1224,15 +1261,28 @@ function buildBookingCard(booking, idx) {
     .filter(Boolean)
     .join('');
 
+  const overrideBadge = booking.isOverridden
+    ? `<span class="type-badge" style="background:rgba(210,153,34,0.15);color:#e3b341;border:1px solid rgba(210,153,34,0.4)" title="Edited on Dashboard">✏️ Dashboard Edited</span>`
+    : '';
+
+  const cardActionBar = `
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <button class="action-btn" onclick="copyBookingDetails(${booking.rowIndex !== undefined ? booking.rowIndex : idx}, event)" style="background:var(--bg-primary);color:var(--text-primary);border-color:var(--border);font-weight:600">📋 Copy Details</button>
+      ${(currentUser && currentUser.role === 'admin')
+        ? `<button class="action-btn" onclick="openEditBookingModalByIndex(${booking.rowIndex !== undefined ? booking.rowIndex : idx}, '${escapeHtml(String(code))}')" style="background:var(--accent-glow);color:var(--accent);border-color:rgba(88,166,255,0.4);font-weight:600">✏️ Edit Booking Details</button>`
+        : ''}
+    </div>`;
+
   return `
     <div class="change-card" id="${id}" style="border-left: 3px solid ${cardLeftBorder}">
       <div class="card-header" onclick="toggleCard('${id}')">
         <div class="card-left">
-          <span class="type-badge" style="background:var(--accent-glow);color:var(--accent);border:1px solid rgba(88,166,255,0.3)">${escapeHtml(String(code))}</span>
+          <span class="type-badge" onclick="copyTextToClipboard('${escapeHtml(String(code))}', 'Code ${escapeHtml(String(code))} copied!')" title="Click to copy code" style="background:var(--accent-glow);color:var(--accent);border:1px solid rgba(88,166,255,0.3);cursor:pointer">${escapeHtml(String(code))}</span>
           <span class="card-title">${escapeHtml(String(name))}${titleRemarkInfo}</span>
           <span style="font-size:0.75rem;color:var(--text-muted)">(${escapeHtml(String(pic))})</span>
           ${roomVal && roomVal !== '—' ? roomInfo.roomBadgeHtml : ''}
           ${remarkBadge}
+          ${overrideBadge}
         </div>
         <div style="display:flex;align-items:center;gap:12px">
           <span class="type-badge" style="background:var(--green-bg);color:var(--green);border:1px solid rgba(63,185,80,0.3);text-transform:none;display:inline-flex;align-items:center;gap:4px">👤 ${escapeHtml(String(cardPax))} Pax</span>
@@ -1245,6 +1295,7 @@ function buildBookingCard(booking, idx) {
           <thead><tr><th>Column</th><th>Value</th></tr></thead>
           <tbody>${rows || '<tr><td colspan="2" style="color:var(--text-muted)">No data</td></tr>'}</tbody>
         </table>
+        ${cardActionBar}
       </div>
     </div>`;
 }
@@ -1341,6 +1392,8 @@ function renderInHouseList(container, searchQuery, targetDateInput, badgeCountEl
   const bookingsList = (allBookings && allBookings.length > 0) ? allBookings : currentBookings;
   const roomPaxIdx = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM_PAX');
   const roomIdx = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM');
+  const checkInIdx = bookingsHeaders.findIndex(h => h && ['CHECK IN', 'CHECK-IN', 'CHECKIN'].includes(h.toString().trim().toUpperCase()));
+  const checkOutIdx = bookingsHeaders.findIndex(h => h && ['CHECK OUT', 'CHECK-OUT', 'CHECKOUT'].includes(h.toString().trim().toUpperCase()));
   const remarkIdx = bookingsHeaders.findIndex(h => h && ['REMARK', 'REMARKS'].includes(h.toString().trim().toUpperCase()));
   const codeIdx = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'CODE');
   const nameIdx = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'NAME');
@@ -1355,8 +1408,8 @@ function renderInHouseList(container, searchQuery, targetDateInput, badgeCountEl
       return;
     }
 
-    const checkIn = parseClientDate(rowData[7]);
-    const checkOut = parseClientDate(rowData[8]);
+    const checkIn = parseClientDate(rowData[checkInIdx !== -1 ? checkInIdx : 7]);
+    const checkOut = parseClientDate(rowData[checkOutIdx !== -1 ? checkOutIdx : 8]);
     if (!checkIn) return;
 
     const cIn = new Date(checkIn); cIn.setHours(0, 0, 0, 0);
@@ -1401,17 +1454,17 @@ function renderInHouseList(container, searchQuery, targetDateInput, badgeCountEl
   for (const key in bookingsByCode) {
     const group = bookingsByCode[key];
     let pax = 1;
-    if (group.totalActivityPax > 0) {
-      pax = group.totalActivityPax;
-    } else if (group.roomPax > 0) {
+    if (group.roomPax > 0) {
       pax = group.roomPax;
+    } else if (group.totalActivityPax > 0) {
+      pax = group.totalActivityPax;
     }
 
     const rowData = group.row;
     const code = group.code;
     const name = group.name;
-    const checkIn = rowData[7] || '—';
-    const checkOut = rowData[8] || '—';
+    const checkIn = (checkInIdx !== -1 ? rowData[checkInIdx] : rowData[7]) || '—';
+    const checkOut = (checkOutIdx !== -1 ? rowData[checkOutIdx] : rowData[8]) || '—';
     const stayDays = rowData[9] || '—';
     const snork = rowData[4] || '';
     const dive = rowData[5] || '';
@@ -2118,3 +2171,233 @@ setInterval(() => {
   if (currentUser) loadData(true);
 }, 120_000);
 
+// ── Admin Dashboard Booking Edit Modal Functions ──
+
+let currentEditingBookingKey = null;
+let currentEditingRowIndex = null;
+
+function openEditBookingModalByIndex(rowIndex, code) {
+  let booking = (activeTab === 'bookings' ? currentBookings : allBookings).find(b => b.rowIndex === rowIndex);
+  if (!booking) {
+    booking = (allBookings || []).find(b => b.rowIndex === rowIndex) || (currentBookings || []).find(b => b.rowIndex === rowIndex);
+  }
+
+  const headers = bookingsHeaders || [];
+  const rowData = booking ? (booking.row || []) : [];
+
+  openEditBookingModal(rowData, headers, rowIndex, booking ? booking.overrideMeta : null, booking ? booking.isOverridden : false);
+}
+
+function openEditBookingModal(rowData, headers, rowIndex, overrideMeta, isOverridden) {
+  const modal = document.getElementById('edit-booking-modal');
+  if (!modal) return;
+
+  const getColVal = (name) => {
+    if (!headers || !headers.length) return '';
+    const idx = headers.findIndex(h => h && h.toString().trim().toUpperCase() === name.toUpperCase());
+    return idx !== -1 ? (rowData[idx] || '') : '';
+  };
+
+  const codeVal = getColVal('CODE');
+  const cleanCode = (codeVal && codeVal !== '—' && codeVal !== '-' && codeVal !== 'N/A') ? codeVal.toUpperCase() : '';
+  const nameVal = getColVal('NAME');
+  const key = cleanCode ? `CODE_${cleanCode}` : (nameVal ? `NAME_${nameVal.toLowerCase()}_ROW_${rowIndex}` : `ROW_${rowIndex}`);
+  currentEditingBookingKey = key;
+  currentEditingRowIndex = rowIndex;
+
+  document.getElementById('edit-booking-key').value = key;
+  document.getElementById('edit-booking-row-index').value = rowIndex;
+
+  document.getElementById('edit-field-name').value = getColVal('NAME');
+  document.getElementById('edit-field-code').value = getColVal('CODE');
+  document.getElementById('edit-field-checkin').value = getColVal('CHECK IN') || getColVal('CHECK-IN') || getColVal('CHECKIN');
+  document.getElementById('edit-field-checkout').value = getColVal('CHECK OUT') || getColVal('CHECK-OUT') || getColVal('CHECKOUT');
+  document.getElementById('edit-field-snorkeling').value = getColVal('SNORKELING') || getColVal('SNORKEL');
+  document.getElementById('edit-field-diving').value = getColVal('DIVING') || getColVal('DIVE');
+  document.getElementById('edit-field-course').value = getColVal('COURSE');
+  document.getElementById('edit-field-room').value = getColVal('ROOM');
+  document.getElementById('edit-field-roompax').value = getColVal('ROOM_PAX');
+  document.getElementById('edit-field-total').value = getColVal('TOTAL AMOUNT') || getColVal('TOTAL');
+  document.getElementById('edit-field-deposit').value = getColVal('DEPOSIT');
+  document.getElementById('edit-field-balance').value = getColVal('BALANCE');
+  document.getElementById('edit-field-status').value = getColVal('STATUS');
+  document.getElementById('edit-field-remark').value = getColVal('REMARK') || getColVal('REMARKS');
+
+  const banner = document.getElementById('edit-override-banner');
+  if (banner) {
+    banner.style.display = isOverridden ? 'flex' : 'none';
+  }
+
+  modal.style.display = 'flex';
+}
+
+function closeEditBookingModal() {
+  const modal = document.getElementById('edit-booking-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function saveBookingEdit(event) {
+  if (event) event.preventDefault();
+
+  const key = document.getElementById('edit-booking-key').value;
+  const rowIndex = parseInt(document.getElementById('edit-booking-row-index').value, 10);
+  const saveBtn = document.getElementById('edit-booking-save-btn');
+
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving Overrides...';
+  }
+
+  const fields = {
+    'NAME': document.getElementById('edit-field-name').value.trim(),
+    'CODE': document.getElementById('edit-field-code').value.trim(),
+    'CHECK IN': document.getElementById('edit-field-checkin').value.trim(),
+    'CHECK OUT': document.getElementById('edit-field-checkout').value.trim(),
+    'SNORKELING': document.getElementById('edit-field-snorkeling').value.trim(),
+    'SNORKELLING': document.getElementById('edit-field-snorkeling').value.trim(),
+    'DIVING': document.getElementById('edit-field-diving').value.trim(),
+    'COURSE': document.getElementById('edit-field-course').value.trim(),
+    'ROOM': document.getElementById('edit-field-room').value.trim(),
+    'ROOM_PAX': document.getElementById('edit-field-roompax').value.trim(),
+    'TOTAL AMOUNT': document.getElementById('edit-field-total').value.trim(),
+    'DEPOSIT': document.getElementById('edit-field-deposit').value.trim(),
+    'BALANCE': document.getElementById('edit-field-balance').value.trim(),
+    'STATUS': document.getElementById('edit-field-status').value.trim(),
+    'REMARK': document.getElementById('edit-field-remark').value.trim()
+  };
+
+  try {
+    const res = await authFetch('/api/admin/bookings/override', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bookingKey: key, rowIndex, fields })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      localStorage.removeItem(DASHBOARD_CACHE_KEY); // Invalidate client cache
+      closeEditBookingModal();
+      showToast('✅ Booking details overridden on Dashboard successfully!');
+      await loadData(true);
+    } else {
+      showToast('❌ Error: ' + (data.error || 'Failed to save override.'));
+    }
+  } catch (err) {
+    if (err.message !== 'Unauthorized') {
+      console.error(err);
+      showToast('❌ Network error saving booking override.');
+    }
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Dashboard Overrides';
+    }
+  }
+}
+
+async function revertBookingEdit() {
+  const key = document.getElementById('edit-booking-key').value;
+  if (!key) return;
+
+  if (!confirm('Are you sure you want to revert this booking back to original Google Sheet values?')) {
+    return;
+  }
+
+  try {
+    const res = await authFetch('/api/admin/bookings/override', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bookingKey: key })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      localStorage.removeItem(DASHBOARD_CACHE_KEY);
+      closeEditBookingModal();
+      showToast('✅ Booking reverted to original sheet values!');
+      await loadData(true);
+    } else {
+      showToast('❌ Error: ' + (data.error || 'Failed to revert override.'));
+    }
+  } catch (err) {
+    if (err.message !== 'Unauthorized') {
+      console.error(err);
+      showToast('❌ Network error reverting override.');
+    }
+  }
+}
+
+// ── Copy Helper & Booking Details Copy Functions ──
+
+function copyTextToClipboard(text, successMsg) {
+  if (!text) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast(successMsg || '📋 Copied to clipboard!');
+    }).catch(() => {
+      fallbackCopyTextToClipboard(text, successMsg);
+    });
+  } else {
+    fallbackCopyTextToClipboard(text, successMsg);
+  }
+}
+
+function fallbackCopyTextToClipboard(text, successMsg) {
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  textArea.style.position = 'fixed';
+  textArea.style.left = '-999999px';
+  textArea.style.top = '-999999px';
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+  try {
+    document.execCommand('copy');
+    showToast(successMsg || '📋 Copied to clipboard!');
+  } catch (err) {
+    showToast('❌ Unable to copy text.');
+  }
+  document.body.removeChild(textArea);
+}
+
+function copyBookingDetails(rowIndex, event) {
+  if (event) event.stopPropagation();
+
+  let booking = (activeTab === 'bookings' ? currentBookings : allBookings).find(b => b.rowIndex === rowIndex);
+  if (!booking) {
+    booking = (allBookings || []).find(b => b.rowIndex === rowIndex) || (currentBookings || []).find(b => b.rowIndex === rowIndex);
+  }
+
+  const headers = bookingsHeaders || [];
+  const rowData = booking ? (booking.row || []) : [];
+
+  const getColVal = (name) => {
+    if (!headers || !headers.length) return '';
+    const idx = headers.findIndex(h => h && h.toString().trim().toUpperCase() === name.toUpperCase());
+    return idx !== -1 ? (rowData[idx] || '') : '';
+  };
+
+  const code = getColVal('CODE') || rowData[1] || '—';
+  const name = getColVal('NAME') || rowData[3] || '—';
+  const checkIn = getColVal('CHECK IN') || getColVal('CHECK-IN') || rowData[7] || '—';
+  const checkOut = getColVal('CHECK OUT') || getColVal('CHECK-OUT') || rowData[8] || '—';
+  const room = getColVal('ROOM') || getColVal('ROOM ASSIGNED') || '—';
+  const pax = getColVal('ROOM_PAX') || booking?.pax || '1';
+  const snork = getColVal('SNORKELING') || getColVal('SNORKELLING') || rowData[4] || '';
+  const dive = getColVal('DIVING') || rowData[5] || '';
+  const course = getColVal('COURSE') || rowData[6] || '';
+  const remark = getColVal('REMARK') || getColVal('REMARKS') || '';
+
+  let summary = `📋 BOOKING DETAILS\n` +
+    `• Code: ${code}\n` +
+    `• Guest Name: ${name}\n` +
+    `• Stay Dates: ${checkIn} → ${checkOut}\n` +
+    `• Guests (Pax): ${pax} Pax\n` +
+    (room && room !== '—' ? `• Room: ${room}\n` : '') +
+    (snork ? `• Snorkeling: ${snork}\n` : '') +
+    (dive ? `• Diving: ${dive}\n` : '') +
+    (course ? `• Course: ${course}\n` : '') +
+    (remark ? `• Remark: ${remark}\n` : '');
+
+  copyTextToClipboard(summary, `📋 Booking details for ${name} copied!`);
+}
