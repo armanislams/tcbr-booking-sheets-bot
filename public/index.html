@@ -57,7 +57,7 @@
 
   <!-- Stats -->
   <div class="stats-grid">
-    <div class="stat-card green" id="stat-card-inhouse">
+    <div class="stat-card green clickable-card" id="stat-card-inhouse" onclick="setTab('inhouse')" title="Click to view detailed In-House Guests List">
       <div class="stat-label">In-House Guests</div>
       <div class="stat-value" id="stat-inhouse">—</div>
       <div class="stat-sub" id="stat-inhouse-sub">On selected date</div>
@@ -87,6 +87,7 @@
   <!-- Tabs -->
   <div class="tab-bar">
     <button class="tab-btn active" id="tab-changelog" onclick="setTab('changelog')">📋 Change Log</button>
+    <button class="tab-btn"        id="tab-inhouse"   onclick="setTab('inhouse')">🏠 In-House List</button>
     <button class="tab-btn"        id="tab-bookings"  onclick="setTab('bookings')">📅 Current Bookings</button>
     <button class="tab-btn"        id="tab-allbookings" onclick="setTab('allbookings')">🌎 All Bookings</button>
   </div>
