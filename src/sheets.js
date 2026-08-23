@@ -1,7 +1,7 @@
 const { JWT } = require('google-auth-library');
 const path = require('path');
 const fs = require('fs');
-const { findHeaderRowIndex, parseDate, getMonthNameFromText, getStayDays } = require('./detector');
+const { findHeaderRowIndex, parseDate, getMonthNameFromText, getMonthIndexFromText, getStayDays } = require('./detector');
 
 /**
  * Helper to build JWT auth client using credentials from environment or file.
@@ -273,50 +273,166 @@ async function fetchRoomMap(monthsToFetch = []) {
 function formatRoomDetailsWithDates(code, checkInVal, checkOutVal, roomMap) {
   if (!code || !checkInVal) return { roomsStr: '—', totalPaxVal: '—' };
 
-  const stayDays = getStayDays(checkInVal, checkOutVal);
-  if (stayDays.length === 0) return { roomsStr: '—', totalPaxVal: '—' };
+  const rowCheckInDate = parseDate(checkInVal);
+  if (!rowCheckInDate) return { roomsStr: '—', totalPaxVal: '—' };
+  rowCheckInDate.setHours(0, 0, 0, 0);
 
-  const dailyAllocations = [];
-  const allRooms = new Set();
+  let rowCheckOutDate = parseDate(checkOutVal);
+  if (!rowCheckOutDate || rowCheckOutDate <= rowCheckInDate) {
+    rowCheckOutDate = new Date(rowCheckInDate.getTime() + 86400000);
+  } else {
+    rowCheckOutDate.setHours(0, 0, 0, 0);
+  }
 
-  stayDays.forEach(stay => {
-    const monthMap = roomMap[stay.month] || {};
-    const codeAlloc = monthMap[code] || {};
-    const dayRooms = codeAlloc[stay.day] || {};
-    dailyAllocations.push({
-      dayStr: `${stay.day} ${stay.month.substring(0, 3)}`,
-      day: stay.day,
-      month: stay.month,
-      rooms: dayRooms
+  // 1. Extract all room entries for this code across roomMap
+  const roomDaysMap = {}; // { roomNumber: [ { dateObj, pax, dayStr } ] }
+
+  Object.keys(roomMap || {}).forEach(monthKey => {
+    const monthIndex = getMonthIndexFromText(monthKey);
+    if (monthIndex === -1) return;
+
+    let year = rowCheckInDate.getFullYear();
+    if (monthIndex < rowCheckInDate.getMonth() && rowCheckInDate.getMonth() === 11) {
+      year += 1;
+    }
+
+    const codeAlloc = (roomMap[monthKey] || {})[code] || {};
+    Object.keys(codeAlloc).forEach(dayStr => {
+      const dayNum = parseInt(dayStr, 10);
+      if (isNaN(dayNum)) return;
+
+      const dateObj = new Date(year, monthIndex, dayNum);
+      dateObj.setHours(0, 0, 0, 0);
+
+      const dayRooms = codeAlloc[dayStr] || {};
+      Object.keys(dayRooms).forEach(roomNum => {
+        const pax = dayRooms[roomNum] || 1;
+        if (!roomDaysMap[roomNum]) roomDaysMap[roomNum] = [];
+        roomDaysMap[roomNum].push({
+          dateObj,
+          pax,
+          dayStr: `${dayNum} ${monthKey.substring(0, 3)}`
+        });
+      });
     });
-    Object.keys(dayRooms).forEach(r => allRooms.add(r));
   });
 
-  if (allRooms.size === 0) return { roomsStr: '—', totalPaxVal: '—' };
+  const roomNumbers = Object.keys(roomDaysMap);
+  if (roomNumbers.length === 0) return { roomsStr: '—', totalPaxVal: '—' };
 
-  const roomFirstSeen = {};
-  const roomMaxPax = {};
+  // 2. Build contiguous stay segments for each room
+  const segments = [];
+  const ONE_DAY = 86400000;
 
-  dailyAllocations.forEach(d => {
-    Object.keys(d.rooms).forEach(r => {
-      if (!roomFirstSeen[r]) roomFirstSeen[r] = d.dayStr;
-      roomMaxPax[r] = Math.max(roomMaxPax[r] || 0, d.rooms[r]);
+  roomNumbers.forEach(roomNum => {
+    const entries = roomDaysMap[roomNum].sort((a, b) => a.dateObj - b.dateObj);
+    if (entries.length === 0) return;
+
+    let currentSegment = null;
+
+    entries.forEach(entry => {
+      if (!currentSegment) {
+        currentSegment = {
+          room: roomNum,
+          checkIn: new Date(entry.dateObj),
+          lastOccupied: new Date(entry.dateObj),
+          maxPax: entry.pax,
+          days: [entry]
+        };
+      } else {
+        const diff = Math.round((entry.dateObj - currentSegment.lastOccupied) / ONE_DAY);
+        if (diff === 1) {
+          currentSegment.lastOccupied = new Date(entry.dateObj);
+          currentSegment.maxPax = Math.max(currentSegment.maxPax, entry.pax);
+          currentSegment.days.push(entry);
+        } else if (diff > 1) {
+          currentSegment.checkOut = new Date(currentSegment.lastOccupied.getTime() + ONE_DAY);
+          segments.push(currentSegment);
+          currentSegment = {
+            room: roomNum,
+            checkIn: new Date(entry.dateObj),
+            lastOccupied: new Date(entry.dateObj),
+            maxPax: entry.pax,
+            days: [entry]
+          };
+        }
+      }
     });
-  });
 
-  // Check if any single day has multiple rooms allocated concurrently
-  let hasConcurrentRooms = false;
-  dailyAllocations.forEach(d => {
-    if (Object.keys(d.rooms).length > 1) {
-      hasConcurrentRooms = true;
+    if (currentSegment) {
+      currentSegment.checkOut = new Date(currentSegment.lastOccupied.getTime() + ONE_DAY);
+      segments.push(currentSegment);
     }
   });
 
-  if (hasConcurrentRooms || allRooms.size === 1) {
-    // Concurrent rooms (e.g. F1 has V104 & B107 on same days) or single room
+  if (segments.length === 0) return { roomsStr: '—', totalPaxVal: '—' };
+
+  // 3. Score each segment against row dates
+  const bIn = rowCheckInDate.getTime();
+  const bOut = rowCheckOutDate.getTime();
+
+  const scoredSegments = segments.map(seg => {
+    const rIn = seg.checkIn.getTime();
+    const rOut = seg.checkOut.getTime();
+
+    const startDiffDays = Math.abs(rIn - bIn) / ONE_DAY;
+    const endDiffDays = Math.abs(rOut - bOut) / ONE_DAY;
+
+    // Check-in start date must align within 1.5 days tolerance
+    if (startDiffDays > 1.5) return { segment: seg, score: 0 };
+
+    // Score formula: Penalize check-out difference by 20 pts per day
+    let score = 100 - (startDiffDays * 10) - (endDiffDays * 20);
+    if (score < 0) score = 0;
+
+    return { segment: seg, score };
+  });
+
+  const maxScore = Math.max(...scoredSegments.map(s => s.score));
+
+  let matchedSegments = [];
+  if (maxScore >= 50) {
+    matchedSegments = scoredSegments.filter(s => s.score >= 50 && s.score >= maxScore - 22).map(s => s.segment);
+  } else if (maxScore > 0) {
+    matchedSegments = scoredSegments.filter(s => s.score >= maxScore - 10 && s.score > 0).map(s => s.segment);
+  }
+
+  if (matchedSegments.length === 0) return { roomsStr: '—', totalPaxVal: '—' };
+
+  // 4. Format room details for matched segments
+  const matchedRooms = Array.from(new Set(matchedSegments.map(s => s.room)));
+  const roomMaxPax = {};
+  const roomFirstSeen = {};
+
+  matchedSegments.forEach(seg => {
+    roomMaxPax[seg.room] = Math.max(roomMaxPax[seg.room] || 0, seg.maxPax);
+    if (!roomFirstSeen[seg.room] || seg.checkIn < roomFirstSeen[seg.room].dateObj) {
+      roomFirstSeen[seg.room] = {
+        dateObj: seg.checkIn,
+        dayStr: seg.days[0] ? seg.days[0].dayStr : ''
+      };
+    }
+  });
+
+  // Check for concurrent rooms (multiple rooms active on the same date)
+  const activeDaysMap = {};
+  let hasConcurrentRooms = false;
+
+  matchedSegments.forEach(seg => {
+    seg.days.forEach(d => {
+      const t = d.dateObj.getTime();
+      if (!activeDaysMap[t]) activeDaysMap[t] = new Set();
+      activeDaysMap[t].add(seg.room);
+      if (activeDaysMap[t].size > 1) {
+        hasConcurrentRooms = true;
+      }
+    });
+  });
+
+  if (hasConcurrentRooms || matchedRooms.length === 1) {
     const parts = [];
     let totalPax = 0;
-    allRooms.forEach(r => {
+    matchedRooms.forEach(r => {
       const pax = roomMaxPax[r] || 1;
       parts.push(`${r} (${pax} Pax)`);
       totalPax += pax;
@@ -328,15 +444,17 @@ function formatRoomDetailsWithDates(code, checkInVal, checkOutVal, roomMap) {
   }
 
   // True Room Change: rooms occur on separate, non-overlapping days
-  const roomSequence = Array.from(allRooms).map(r => ({
+  const roomSequence = matchedRooms.map(r => ({
     room: r,
     pax: roomMaxPax[r],
-    firstSeen: roomFirstSeen[r]
-  }));
+    firstSeen: roomFirstSeen[r]?.dayStr || ''
+  })).sort((a, b) => (roomFirstSeen[a.room]?.dateObj || 0) - (roomFirstSeen[b.room]?.dateObj || 0));
 
   const changeDates = [];
   for (let i = 1; i < roomSequence.length; i++) {
-    changeDates.push(`on ${roomSequence[i].firstSeen}`);
+    if (roomSequence[i].firstSeen) {
+      changeDates.push(`on ${roomSequence[i].firstSeen}`);
+    }
   }
 
   const transitionStr = roomSequence.map(r => r.room).join(' ➔ ');
@@ -445,7 +563,7 @@ async function enrichSheetRows(rows) {
       lastBlockPic = picVal;
       lastBlockName = nameVal;
       lastBlockColor = colorVal;
-    } else if (!code && !nameVal && colorVal && colorVal !== 'WHITE' && colorVal === lastBlockColor) {
+    } else if (!code && !nameVal && lastBlockCode) {
       if (codeIndex !== -1 && lastBlockCode) {
         row[codeIndex] = lastBlockCode;
         code = lastBlockCode;
