@@ -92,14 +92,53 @@ async function saveOverride(bookingKey, overrideData, updatedBy) {
 
 /**
  * Remove an override for a booking key (revert to original sheet data).
+ * Supports search by key, ROW_rowIndex, or legacy keys.
  */
-async function deleteOverride(bookingKey) {
-  if (!bookingKey) return false;
-
+async function deleteOverride(bookingKey, rowIndex) {
   const overrides = await loadOverrides();
-  if (!overrides[bookingKey]) return false;
+  if (!overrides || Object.keys(overrides).length === 0) return false;
 
-  delete overrides[bookingKey];
+  let targetKey = null;
+
+  // 1. Direct match by bookingKey
+  if (bookingKey && overrides[bookingKey]) {
+    targetKey = bookingKey;
+  }
+  // 2. Direct match by ROW_rowIndex
+  else if (rowIndex !== undefined && rowIndex !== null && overrides[`ROW_${rowIndex}`]) {
+    targetKey = `ROW_${rowIndex}`;
+  }
+  // 3. Fallback search by bookingKey signature
+  else if (bookingKey) {
+    for (const k in overrides) {
+      if (k === bookingKey || (overrides[k].overrideMeta && overrides[k].overrideMeta.bookingKey === bookingKey)) {
+        targetKey = k;
+        break;
+      }
+    }
+  }
+
+  // 4. Fallback search by rowIndex suffix
+  if (!targetKey && rowIndex !== undefined && rowIndex !== null) {
+    for (const k in overrides) {
+      if (k.endsWith(`_ROW_${rowIndex}`) || k === `ROW_${rowIndex}`) {
+        targetKey = k;
+        break;
+      }
+    }
+  }
+
+  // 5. If any key exists and bookingKey was provided (e.g. legacy CODE_ keys)
+  if (!targetKey && bookingKey) {
+    const keys = Object.keys(overrides);
+    if (keys.length === 1) {
+      targetKey = keys[0];
+    }
+  }
+
+  if (!targetKey) return false;
+
+  delete overrides[targetKey];
   cachedOverrides = overrides;
   lastOverridesLoadTime = Date.now();
 
@@ -107,7 +146,13 @@ async function deleteOverride(bookingKey) {
   if (db) {
     try {
       const collection = db.collection('booking_overrides');
-      await collection.deleteOne({ bookingKey });
+      await collection.deleteMany({
+        $or: [
+          { bookingKey: targetKey },
+          { bookingKey },
+          { bookingKey: `ROW_${rowIndex}` }
+        ].filter(b => b.bookingKey)
+      });
     } catch (err) {
       console.error('   ❌ MongoDB deleteOverride error:', err.message);
     }
