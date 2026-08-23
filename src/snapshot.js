@@ -656,6 +656,7 @@ async function saveBotConfig(config) {
 }
 
 module.exports = {
+  getDb,
   loadSnapshot,
   saveSnapshot,
   appendHistory,

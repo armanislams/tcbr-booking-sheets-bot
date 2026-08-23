@@ -468,12 +468,30 @@ async function enrichSheetRows(rows) {
 }
 
 /**
- * Fetches all rows from the Google Sheet and enriches them with Room details.
+ * Fetches all rows from the Google Sheet, enriches them with Room details,
+ * and applies active dashboard admin overrides.
  */
 async function fetchAndEnrichSheetData() {
   const rows = await fetchSheetData();
   await enrichSheetRows(rows);
+
+  try {
+    const { applyOverridesToRows } = require('./overrides');
+    const headerIndex = findHeaderRowIndex(rows);
+    const headers = rows[headerIndex] || [];
+
+    const dataRows = rows.slice(headerIndex + 1);
+    const overriddenDataRows = await applyOverridesToRows(dataRows, headers);
+
+    for (let i = 0; i < overriddenDataRows.length; i++) {
+      rows[headerIndex + 1 + i] = overriddenDataRows[i];
+    }
+  } catch (err) {
+    console.warn('   ⚠️ Failed to apply admin overrides in fetchAndEnrichSheetData:', err.message);
+  }
+
   return rows;
 }
 
 module.exports = { fetchSheetData, fetchRoomMap, enrichSheetRows, fetchAndEnrichSheetData };
+

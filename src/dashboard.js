@@ -5,8 +5,10 @@ const { parseDate } = require('./detector');
 const { parsePax, parseDivingPax, parseCoursePax } = require('./weeklyReport');
 const { initSeedAdmin, loginUser, registerUser, revokeToken, requireAuth, requireAdmin } = require('./auth');
 const admin = require('./adminController');
+const { applyOverridesToRows } = require('./overrides');
 
 const app = express();
+
 
 // Middleware to parse JSON bodies
 app.use(express.json());
@@ -90,10 +92,11 @@ app.get('/api/current-bookings', requireAuth, async (req, res) => {
       return res.json({ headers: [], bookings: [] });
     }
 
-    const bookings = Object.values(snapshot.monthMap || {}).map(entry => ({
+    const rawBookings = Object.values(snapshot.monthMap || {}).map(entry => ({
       row: entry.row,
       rowIndex: entry.rowIndex,
     }));
+    const bookings = await applyOverridesToRows(rawBookings, snapshot.headers || []);
 
     res.json({
       headers: snapshot.headers || [],
@@ -113,9 +116,12 @@ app.get('/api/all-bookings', requireAuth, async (req, res) => {
       return res.json({ headers: [], bookings: [] });
     }
 
+    const rawBookings = snapshot.allRows || [];
+    const bookings = await applyOverridesToRows(rawBookings, snapshot.headers || []);
+
     res.json({
       headers: snapshot.headers || [],
-      bookings: snapshot.allRows || [],
+      bookings,
     });
   } catch (err) {
     console.error('   ❌ Failed to load all bookings:', err.message);
@@ -190,8 +196,11 @@ app.get('/api/in-house', requireAuth, async (req, res) => {
 
     const bookingsByCode = {};
 
-    for (let i = 0; i < snapshot.allRows.length; i++) {
-      const item = snapshot.allRows[i];
+    const rawAllRows = snapshot.allRows || [];
+    const allRows = await applyOverridesToRows(rawAllRows, snapshot.headers || []);
+
+    for (let i = 0; i < allRows.length; i++) {
+      const item = allRows[i];
       const row = item.row || item;
       
       const remarkVal = (remarkIdx !== -1 ? (row[remarkIdx] || '') : (row[22] || '')).toString().toLowerCase();
@@ -227,9 +236,11 @@ app.get('/api/in-house', requireAuth, async (req, res) => {
           bookingsByCode[codeKey] = {
             code: rawCode,
             firstRow: row,
-            firstRowIndex: i,
+            firstRowIndex: item.rowIndex !== undefined ? item.rowIndex : i,
             totalActivityPax: 0,
-            roomPax: 0
+            roomPax: 0,
+            isOverridden: !!item.isOverridden,
+            overrideMeta: item.overrideMeta
           };
         }
 
@@ -251,14 +262,20 @@ app.get('/api/in-house', requireAuth, async (req, res) => {
       const group = bookingsByCode[key];
 
       let pax = 1;
-      if (group.totalActivityPax > 0) {
-        pax = group.totalActivityPax;
-      } else if (group.roomPax > 0) {
+      if (group.roomPax > 0) {
         pax = group.roomPax;
+      } else if (group.totalActivityPax > 0) {
+        pax = group.totalActivityPax;
       }
 
       totalGuests += pax;
-      inHouseBookings.push({ row: group.firstRow, rowIndex: group.firstRowIndex, pax });
+      inHouseBookings.push({
+        row: group.firstRow,
+        rowIndex: group.firstRowIndex,
+        pax,
+        isOverridden: group.isOverridden,
+        overrideMeta: group.overrideMeta
+      });
     }
 
     res.json({
@@ -328,6 +345,11 @@ app.get('/api/admin/telemetry', requireAuth, requireAdmin, admin.getTelemetrySta
 app.post('/api/admin/snapshot/reset', requireAuth, requireAdmin, admin.resetSnapshotBaseline);
 app.get('/api/admin/export/:type', requireAuth, requireAdmin, admin.exportData);
 app.get('/api/admin/audit-logs', requireAuth, requireAdmin, admin.getAuditLogsHandler);
+
+// Admin Dashboard Booking Overrides APIs
+app.put('/api/admin/bookings/override', requireAuth, requireAdmin, admin.updateBookingOverride);
+app.delete('/api/admin/bookings/override', requireAuth, requireAdmin, admin.revertBookingOverride);
+
 
 async function startDashboard(runCheckFn) {
   runCheckCallback = runCheckFn;

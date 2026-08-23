@@ -211,11 +211,11 @@
 
   <!-- Search and Date Filter (shared) -->
   <div class="search-bar" style="margin-bottom: 24px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; background: var(--bg-card); border: 1px solid var(--border); padding: 14px 18px; border-radius: var(--radius);">
-    <div style="position: relative; flex-grow: 2; min-width: 280px;">
+    <div class="search-input-wrapper" style="position: relative; flex-grow: 2; flex-basis: 260px;">
       <input type="text" id="search-input" class="search-input-field" placeholder="Search by booking code, name, check-in, or check-out (e.g. TCB-101, Jolene, 30th May)..." oninput="handleSearch()" style="width: 100%; padding: 8px 12px 8px 36px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-family: inherit; font-size: 0.85rem; outline: none; transition: border-color 0.2s;">
       <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); font-size: 0.85rem; pointer-events: none;">🔍</span>
     </div>
-    <div style="display: flex; gap: 12px; align-items: center; flex-grow: 1; min-width: 450px; justify-content: flex-end; flex-wrap: wrap;">
+    <div class="date-filters-wrapper" style="display: flex; gap: 10px; align-items: center; flex-grow: 1; justify-content: flex-end; flex-wrap: wrap;">
       <div style="display: flex; gap: 6px; align-items: center;">
         <span style="font-size: 0.8rem; color: var(--text-secondary);">Check-In:</span>
         <input type="date" id="checkin-date-input" class="search-input-field" onchange="handleDateSelect()" style="padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-family: inherit; font-size: 0.85rem; outline: none; transition: border-color 0.2s;">
@@ -510,15 +510,112 @@
   </div>
 </div>
 
-<!-- ── Internal Notes Modal ── -->
-<div id="note-modal" class="modal-overlay" style="display: none; z-index: 9500; background: rgba(13, 17, 23, 0.85); backdrop-filter: blur(6px);">
-  <div style="width: 90%; max-width: 500px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px;">
-    <h4 style="font-size: 1rem; font-weight: 700; margin-bottom: 12px;">Add Internal Note</h4>
-    <input type="hidden" id="note-target-id">
-    <textarea id="note-content-input" rows="4" placeholder="Type internal staff note or remark..." style="width: 100%; padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-family: inherit; font-size: 0.85rem; outline: none; margin-bottom: 16px; resize: vertical;"></textarea>
-    <div style="display: flex; gap: 8px; justify-content: flex-end;">
-      <button class="action-btn" onclick="closeNoteModal()">Cancel</button>
-      <button class="action-btn primary-action-btn" onclick="submitInternalNote()">Save Note</button>
+<!-- ── Edit Booking Details Modal (Admin Dashboard Only) ── -->
+<div id="edit-booking-modal" class="modal-overlay" style="display: none; z-index: 9600; background: rgba(13, 17, 23, 0.85); backdrop-filter: blur(8px);">
+  <div style="width: 90%; max-width: 680px; max-height: 90vh; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 16px 32px rgba(0,0,0,0.5);">
+    
+    <!-- Modal Header -->
+    <div style="padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-secondary);">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 1.2rem;">✏️</span>
+        <div>
+          <h4 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin: 0;">Edit Booking Details (Dashboard Only)</h4>
+          <span style="font-size: 0.75rem; color: var(--text-muted);">Edits show on dashboard views without altering the Google Sheet</span>
+        </div>
+      </div>
+      <button onclick="closeEditBookingModal()" style="background: none; border: none; color: var(--text-muted); font-size: 1.2rem; cursor: pointer;">✕</button>
+    </div>
+
+    <!-- Modal Body Form -->
+    <div style="padding: 24px; overflow-y: auto; flex: 1;" id="edit-booking-modal-body">
+      <form id="edit-booking-form" onsubmit="saveBookingEdit(event)">
+        <input type="hidden" id="edit-booking-key">
+        <input type="hidden" id="edit-booking-row-index">
+
+        <!-- Banner for active override -->
+        <div id="edit-override-banner" style="display: none; padding: 10px 14px; background: rgba(210, 153, 34, 0.15); border: 1px solid rgba(210, 153, 34, 0.4); border-radius: var(--radius-sm); color: #e3b341; font-size: 0.82rem; margin-bottom: 16px; align-items: center; justify-content: space-between;">
+          <span>⚠️ <b>Active Dashboard Override:</b> This booking has customized details saved locally.</span>
+          <button type="button" class="action-btn" onclick="revertBookingEdit()" style="font-size: 0.75rem; padding: 3px 8px; background: rgba(248,81,73,0.2); color: var(--red); border-color: rgba(248,81,73,0.4);">Revert to Sheet Values</button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+          <div>
+            <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Customer Name</label>
+            <input type="text" id="edit-field-name" placeholder="Guest Name" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-size: 0.88rem;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Booking Code</label>
+            <input type="text" id="edit-field-code" placeholder="e.g. K6, F1" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-size: 0.88rem;">
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+          <div>
+            <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Check In Date</label>
+            <input type="text" id="edit-field-checkin" placeholder="e.g. 10/06/2026" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-size: 0.88rem;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Check Out Date</label>
+            <input type="text" id="edit-field-checkout" placeholder="e.g. 13/06/2026" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-size: 0.88rem;">
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+          <div>
+            <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Snorkeling</label>
+            <input type="text" id="edit-field-snorkeling" placeholder="e.g. 2 Pax" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-size: 0.85rem;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Diving</label>
+            <input type="text" id="edit-field-diving" placeholder="e.g. 1 Pax" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-size: 0.85rem;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Course</label>
+            <input type="text" id="edit-field-course" placeholder="e.g. OWD 1" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-size: 0.85rem;">
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+          <div>
+            <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Room Allocation</label>
+            <input type="text" id="edit-field-room" placeholder="e.g. S101" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-size: 0.88rem;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Room Pax</label>
+            <input type="text" id="edit-field-roompax" placeholder="e.g. 2" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-size: 0.88rem;">
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 16px;">
+          <div>
+            <label style="display: block; font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Total Amount</label>
+            <input type="text" id="edit-field-total" placeholder="RM 0" style="width: 100%; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-size: 0.82rem;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Deposit</label>
+            <input type="text" id="edit-field-deposit" placeholder="RM 0" style="width: 100%; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-size: 0.82rem;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Balance</label>
+            <input type="text" id="edit-field-balance" placeholder="RM 0" style="width: 100%; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-size: 0.82rem;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Status</label>
+            <input type="text" id="edit-field-status" placeholder="Paid / Pending" style="width: 100%; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-size: 0.82rem;">
+          </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Remarks & Special Notes</label>
+          <textarea id="edit-field-remark" rows="3" placeholder="Remarks or internal notes..." style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-family: inherit; font-size: 0.85rem; outline: none; resize: vertical;"></textarea>
+        </div>
+
+        <!-- Form Actions -->
+        <div style="display: flex; gap: 10px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid var(--border);">
+          <button type="button" class="action-btn" onclick="closeEditBookingModal()">Cancel</button>
+          <button type="submit" class="action-btn primary-action-btn" id="edit-booking-save-btn">Save Dashboard Overrides</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
@@ -526,3 +623,4 @@
 <button class="scroll-to-top" id="scroll-to-top-btn" onclick="scrollToTop()" title="Scroll to top">▲</button>
 </body>
 </html>
+

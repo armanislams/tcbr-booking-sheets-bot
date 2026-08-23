@@ -482,6 +482,80 @@ async function getAuditLogsHandler(req, res) {
   }
 }
 
+/**
+ * Save or update dashboard booking details override (Admin only).
+ * Expects { bookingKey, fields } or { rowIndex, fields } in req.body.
+ */
+async function updateBookingOverride(req, res) {
+  try {
+    const { saveOverride, getBookingKey } = require('./overrides');
+    const { bookingKey: inputKey, rowIndex, fields } = req.body;
+    if (!fields || typeof fields !== 'object') {
+      return res.status(400).json({ error: 'Fields object is required for booking override.' });
+    }
+
+    let finalKey = inputKey;
+    const snapshot = await loadSnapshot();
+
+    if (!finalKey && typeof rowIndex === 'number' && snapshot && snapshot.allRows) {
+      const match = snapshot.allRows.find(r => r.rowIndex === rowIndex);
+      if (match) {
+        finalKey = getBookingKey(match.row, snapshot.headers, match.rowIndex);
+      }
+    }
+
+    if (!finalKey) {
+      return res.status(400).json({ error: 'Could not determine booking key for override.' });
+    }
+
+    const payload = await saveOverride(finalKey, { fields }, req.user.username);
+
+    await appendAuditLog({
+      action: 'DASHBOARD_BOOKING_OVERRIDDEN',
+      username: req.user.username,
+      role: req.user.role,
+      details: `Updated dashboard override for [${finalKey}]: ${Object.keys(fields).join(', ')}`,
+      ip: req.ip
+    });
+
+    res.json({ success: true, message: 'Booking override saved successfully on dashboard.', override: payload, bookingKey: finalKey });
+  } catch (err) {
+    console.error('   ❌ Error updating booking override:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/**
+ * Delete a dashboard booking override (Revert to original Google Sheet data).
+ */
+async function revertBookingOverride(req, res) {
+  try {
+    const { deleteOverride } = require('./overrides');
+    const { bookingKey } = req.body;
+    if (!bookingKey) {
+      return res.status(400).json({ error: 'Booking key is required to revert override.' });
+    }
+
+    const removed = await deleteOverride(bookingKey);
+    if (!removed) {
+      return res.status(404).json({ error: 'No active override found for this booking.' });
+    }
+
+    await appendAuditLog({
+      action: 'DASHBOARD_BOOKING_OVERRIDE_REVERTED',
+      username: req.user.username,
+      role: req.user.role,
+      details: `Reverted dashboard override for [${bookingKey}] back to original sheet values.`,
+      ip: req.ip
+    });
+
+    res.json({ success: true, message: 'Booking override reverted to original sheet data.' });
+  } catch (err) {
+    console.error('   ❌ Error reverting booking override:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+
 module.exports = {
   getOrLoadConfig,
   getUsers,
@@ -497,5 +571,8 @@ module.exports = {
   exportData,
   createInternalNote,
   fetchInternalNotes,
-  getAuditLogsHandler
+  getAuditLogsHandler,
+  updateBookingOverride,
+  revertBookingOverride
 };
+
