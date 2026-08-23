@@ -256,6 +256,10 @@ function setTab(tabName) {
     if (filterBar) filterBar.style.display = 'flex';
     if (monthFilterContainer) monthFilterContainer.style.display = 'none';
     if (viewTitleEl) viewTitleEl.innerHTML = '📋 Change Log';
+  } else if (tabName === 'inhouse') {
+    if (filterBar) filterBar.style.display = 'none';
+    if (monthFilterContainer) monthFilterContainer.style.display = 'none';
+    if (viewTitleEl) viewTitleEl.innerHTML = '🏠 In-House Guests List';
   } else if (tabName === 'bookings') {
     if (filterBar) filterBar.style.display = 'none';
     if (monthFilterContainer) monthFilterContainer.style.display = 'none';
@@ -656,6 +660,11 @@ function renderContent() {
 
   // Update In-House Guests statistics for the target date
   updateInHouseStats(parsedCheckInDate);
+
+  if (activeTab === 'inhouse') {
+    renderInHouseList(container, searchQuery, parsedCheckInDate, badgeCountEl);
+    return;
+  }
 
   if (activeTab === 'changelog') {
     // --- Render Change Log ---
@@ -1350,6 +1359,198 @@ window.addEventListener('DOMContentLoaded', () => {
     setTimeout(openAuthNoticeModal, 400);
   }
 });
+
+// ── Render In-House Guests List View ─────────────────────────────────────────
+function renderInHouseList(container, searchQuery, targetDateInput, badgeCountEl) {
+  const tDate = targetDateInput ? new Date(targetDateInput) : new Date();
+  tDate.setHours(0, 0, 0, 0);
+
+  const bookingsList = (allBookings && allBookings.length > 0) ? allBookings : currentBookings;
+  const roomPaxIdx = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM_PAX');
+  const roomIdx = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM');
+  const remarkIdx = bookingsHeaders.findIndex(h => h && ['REMARK', 'REMARKS'].includes(h.toString().trim().toUpperCase()));
+  const codeIdx = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'CODE');
+  const nameIdx = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'NAME');
+
+  const bookingsByCode = {};
+
+  bookingsList.forEach((item, index) => {
+    const rowData = item.row || [];
+    const remarkVal = (remarkIdx !== -1 ? (rowData[remarkIdx] || '') : (rowData[22] || '')).toString().toLowerCase();
+
+    if (remarkVal.includes('cancel') || remarkVal.includes('cancle') || remarkVal.includes('cancelled') || remarkVal.includes('postpone') || remarkVal.includes('postponed')) {
+      return;
+    }
+
+    const checkIn = parseClientDate(rowData[7]);
+    const checkOut = parseClientDate(rowData[8]);
+    if (!checkIn) return;
+
+    const cIn = new Date(checkIn); cIn.setHours(0, 0, 0, 0);
+    let cOut = checkOut ? new Date(checkOut) : new Date(cIn); cOut.setHours(0, 0, 0, 0);
+
+    let isInHouse = false;
+    if (cOut > cIn) {
+      isInHouse = (tDate >= cIn && tDate < cOut);
+    } else {
+      isInHouse = (tDate.getTime() === cIn.getTime());
+    }
+
+    if (isInHouse) {
+      const rawCode = (codeIdx !== -1 && rowData[codeIdx]) ? rowData[codeIdx].toString().trim().toUpperCase() : '';
+      const codeKey = rawCode || `ROW_${index}`;
+
+      if (!bookingsByCode[codeKey]) {
+        bookingsByCode[codeKey] = {
+          code: rawCode,
+          name: (nameIdx !== -1 && rowData[nameIdx]) ? rowData[nameIdx].toString().trim() : '',
+          row: rowData,
+          rowIndex: item.rowIndex || index + 1,
+          totalActivityPax: 0,
+          roomPax: 0,
+          roomStr: (roomIdx !== -1 && rowData[roomIdx]) ? rowData[roomIdx].toString().trim() : '—'
+        };
+      }
+
+      bookingsByCode[codeKey].totalActivityPax += getRowActivityPaxClient(rowData);
+      if (roomPaxIdx !== -1 && rowData[roomPaxIdx] && rowData[roomPaxIdx] !== '—') {
+        const parsedPax = parsePaxString(rowData[roomPaxIdx].toString());
+        if (parsedPax > 0 && bookingsByCode[codeKey].roomPax === 0) {
+          bookingsByCode[codeKey].roomPax = parsedPax;
+        }
+      }
+    }
+  });
+
+  const list = [];
+  let totalPax = 0;
+
+  for (const key in bookingsByCode) {
+    const group = bookingsByCode[key];
+    let pax = 1;
+    if (group.totalActivityPax > 0) {
+      pax = group.totalActivityPax;
+    } else if (group.roomPax > 0) {
+      pax = group.roomPax;
+    }
+
+    const rowData = group.row;
+    const code = group.code;
+    const name = group.name;
+    const checkIn = rowData[7] || '—';
+    const checkOut = rowData[8] || '—';
+    const stayDays = rowData[9] || '—';
+    const snork = rowData[4] || '';
+    const dive = rowData[5] || '';
+    const course = rowData[6] || '';
+
+    // Search filter check
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const matchCode = code.toLowerCase().includes(q);
+      const matchName = name.toLowerCase().includes(q);
+      const matchCheckIn = checkIn.toLowerCase().includes(q);
+      const matchCheckOut = checkOut.toLowerCase().includes(q);
+      const matchRoom = group.roomStr.toLowerCase().includes(q);
+      if (!matchCode && !matchName && !matchCheckIn && !matchCheckOut && !matchRoom) {
+        continue;
+      }
+    }
+
+    totalPax += pax;
+    list.push({
+      rowIndex: group.rowIndex,
+      code: code || '—',
+      name: name || 'Unassigned',
+      checkIn,
+      checkOut,
+      stayDays,
+      snork,
+      dive,
+      course,
+      roomStr: group.roomStr,
+      pax
+    });
+  }
+
+  const dateFormatted = tDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const isToday = isSameDay(tDate, new Date());
+  const dateTag = isToday ? `Today (${dateFormatted})` : dateFormatted;
+
+  if (badgeCountEl) badgeCountEl.textContent = `${totalPax} In-House Pax (${list.length} Bookings)`;
+
+  if (list.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">🏠</div>
+        <h3>No In-House Guests Found for ${dateTag}</h3>
+        <p>Try picking another date using the Check-In filter or search bar.</p>
+      </div>`;
+    return;
+  }
+
+  let html = `
+    <div class="inhouse-summary-bar">
+      <div>
+        <span style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">🏠 In-House Guests Breakdown</span>
+        <span style="font-size: 0.85rem; color: var(--text-secondary); margin-left: 8px;">Date: <strong style="color: var(--accent);">${dateTag}</strong></span>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <span class="badge" style="background: var(--green-bg); color: var(--green); border: 1px solid rgba(63,185,80,0.3); font-size: 0.9rem; font-weight: 700; padding: 6px 14px;">
+          👥 ${totalPax} Total Guests (Pax)
+        </span>
+        <span class="badge" style="background: var(--accent-glow); color: var(--accent); border: 1px solid rgba(88,166,255,0.3); font-size: 0.85rem; font-weight: 600; padding: 6px 12px;">
+          📋 ${list.length} Active Bookings
+        </span>
+      </div>
+    </div>
+
+    <div style="overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border);">
+      <table class="inhouse-table">
+        <thead>
+          <tr>
+            <th style="width: 40px; text-align: center;">#</th>
+            <th style="width: 60px;">Row</th>
+            <th style="width: 70px;">Code</th>
+            <th>Customer Name</th>
+            <th style="width: 140px;">Stay Dates</th>
+            <th style="width: 120px;">Activities</th>
+            <th>Assigned Rooms</th>
+            <th style="width: 90px; text-align: right;">In-House Pax</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  list.forEach((item, i) => {
+    const actParts = [];
+    if (item.snork) actParts.push(`🤿 ${item.snork}`);
+    if (item.dive) actParts.push(`🏊 ${item.dive}`);
+    if (item.course) actParts.push(`📚 ${item.course}`);
+    const actStr = actParts.length > 0 ? actParts.join('<br>') : '—';
+
+    html += `
+      <tr>
+        <td style="text-align: center; color: var(--text-muted); font-size: 0.8rem;">${i + 1}</td>
+        <td style="color: var(--text-secondary); font-family: monospace; font-size: 0.8rem;">#${item.rowIndex}</td>
+        <td><code style="background: var(--bg-primary); padding: 2px 6px; border-radius: 4px; color: var(--accent); font-weight: 600;">${item.code}</code></td>
+        <td style="font-weight: 600; color: var(--text-primary);">${item.name}</td>
+        <td style="font-size: 0.8rem; color: var(--text-secondary);">${item.checkIn} &rarr; ${item.checkOut}<br><span style="color: var(--text-muted); font-size: 0.75rem;">(${item.stayDays})</span></td>
+        <td style="font-size: 0.8rem;">${actStr}</td>
+        <td style="font-size: 0.82rem; color: var(--text-primary); font-weight: 500;">${item.roomStr}</td>
+        <td style="text-align: right;"><span class="badge" style="background: var(--green-bg); color: var(--green); border: 1px solid rgba(63,185,80,0.3); font-weight: 700;">${item.pax} Pax</span></td>
+      </tr>
+    `;
+  });
+
+  html += `
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  container.innerHTML = html;
+}
 
 // ── Auto-refresh every 2 minutes & initial data load ─────────────────────────
 loadData();
