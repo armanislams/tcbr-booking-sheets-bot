@@ -526,12 +526,21 @@ async function updateBookingOverride(req, res) {
 async function revertBookingOverride(req, res) {
   try {
     const { deleteOverride } = require('./overrides');
-    const { bookingKey } = req.body;
-    if (!bookingKey) {
-      return res.status(400).json({ error: 'Booking key is required to revert override.' });
+    const { bookingKey: inputKey, rowIndex } = req.body;
+    let targetKey = inputKey;
+    if (typeof rowIndex === 'number') {
+      targetKey = `ROW_${rowIndex}`;
     }
 
-    const removed = await deleteOverride(bookingKey);
+    if (!targetKey && !inputKey) {
+      return res.status(400).json({ error: 'Booking key or row index is required to revert override.' });
+    }
+
+    let removed = await deleteOverride(targetKey);
+    if (!removed && inputKey && inputKey !== targetKey) {
+      removed = await deleteOverride(inputKey);
+    }
+
     if (!removed) {
       return res.status(404).json({ error: 'No active override found for this booking.' });
     }

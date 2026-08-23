@@ -1265,9 +1265,14 @@ function buildBookingCard(booking, idx) {
     ? `<span class="type-badge" style="background:rgba(210,153,34,0.15);color:#e3b341;border:1px solid rgba(210,153,34,0.4)" title="Edited on Dashboard">✏️ Dashboard Edited</span>`
     : '';
 
+  const revertBtn = (currentUser && currentUser.role === 'admin' && booking.isOverridden)
+    ? `<button class="action-btn" onclick="revertBookingOverrideDirect('${escapeHtml(String(booking.overrideMeta?.bookingKey || ''))}', ${booking.rowIndex !== undefined ? booking.rowIndex : idx}, event)" style="background:rgba(248,81,73,0.15);color:var(--red);border-color:rgba(248,81,73,0.4);font-weight:600">↩️ Revert to Sheet</button>`
+    : '';
+
   const cardActionBar = `
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
       <button class="action-btn" onclick="copyBookingDetails(${booking.rowIndex !== undefined ? booking.rowIndex : idx}, event)" style="background:var(--bg-primary);color:var(--text-primary);border-color:var(--border);font-weight:600">📋 Copy Details</button>
+      ${revertBtn}
       ${(currentUser && currentUser.role === 'admin')
         ? `<button class="action-btn" onclick="openEditBookingModalByIndex(${booking.rowIndex !== undefined ? booking.rowIndex : idx}, '${escapeHtml(String(code))}')" style="background:var(--accent-glow);color:var(--accent);border-color:rgba(88,166,255,0.4);font-weight:600">✏️ Edit Booking Details</button>`
         : ''}
@@ -2397,4 +2402,34 @@ function copyBookingDetails(rowIndex, event) {
     (remark ? `• Remark: ${remark}\n` : '');
 
   copyTextToClipboard(summary, `📋 Booking details for ${name} copied!`);
+}
+
+async function revertBookingOverrideDirect(key, rowIndex, event) {
+  if (event) event.stopPropagation();
+  const overrideKey = key || `ROW_${rowIndex}`;
+  if (!confirm('Are you sure you want to revert this booking back to original Google Sheet values?')) {
+    return;
+  }
+
+  try {
+    const res = await authFetch('/api/admin/bookings/override', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bookingKey: overrideKey, rowIndex })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      localStorage.removeItem(DASHBOARD_CACHE_KEY);
+      showToast('✅ Booking reverted to original sheet values!');
+      await loadData(true);
+    } else {
+      showToast('❌ Error: ' + (data.error || 'Failed to revert override.'));
+    }
+  } catch (err) {
+    if (err.message !== 'Unauthorized') {
+      console.error(err);
+      showToast('❌ Network error reverting override.');
+    }
+  }
 }
