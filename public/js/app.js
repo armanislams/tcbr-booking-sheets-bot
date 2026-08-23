@@ -1263,7 +1263,7 @@ function buildBookingCard(booking, idx) {
     .join('');
 
   const overrideBadge = booking.isOverridden
-    ? `<span class="type-badge" style="background:rgba(210,153,34,0.15);color:#e3b341;border:1px solid rgba(210,153,34,0.4)" title="Edited on Dashboard">✏️ Dashboard Edited</span>`
+    ? `<span class="type-badge" style="background:rgba(113, 221, 25, 0.38);color:#e3b341;border:1px solid rgba(209, 82, 9, 0.4)" title="Edited on Dashboard">✏️ Edited</span>`
     : '';
 
   const revertBtn = (currentUser && currentUser.role === 'admin' && booking.isOverridden)
