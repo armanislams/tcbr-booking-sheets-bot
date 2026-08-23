@@ -224,17 +224,27 @@ async function fetchRoomMap(monthsToFetch = []) {
           if (!cleanPart) continue;
 
           let bookingCode = cleanPart;
-          let pax = 1;
+          let basePax = 1;
+          let addonPax = 0;
 
-          // Parse pax suffix if present (e.g. "B4-2" -> code "B4", pax "2")
-          const lastDashIndex = cleanPart.lastIndexOf('-');
+          // Parse optional parenthetical addon pax count, e.g. "K6-1(1)" -> addon = 1
+          const parenMatch = bookingCode.match(/\((\d+)\)/);
+          if (parenMatch) {
+            addonPax = parseInt(parenMatch[1], 10);
+            bookingCode = bookingCode.replace(/\(\d+\)/, '').trim();
+          }
+
+          // Parse base pax suffix or sub-code dash if present, e.g. "K6-1" -> base = 1, code = "K6"
+          const lastDashIndex = bookingCode.lastIndexOf('-');
           if (lastDashIndex !== -1) {
-            const suffix = cleanPart.substring(lastDashIndex + 1).trim();
+            const suffix = bookingCode.substring(lastDashIndex + 1).trim();
             if (/^\d+$/.test(suffix)) {
-              bookingCode = cleanPart.substring(0, lastDashIndex).trim();
-              pax = parseInt(suffix, 10);
+              basePax = parseInt(suffix, 10);
+              bookingCode = bookingCode.substring(0, lastDashIndex).trim();
             }
           }
+
+          const pax = basePax + addonPax;
 
           const upperCode = bookingCode.toUpperCase();
           const dayNum = colIndexToDay[colIndex];
