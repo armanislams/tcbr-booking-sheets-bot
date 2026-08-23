@@ -597,7 +597,8 @@ function updateInHouseStats(targetDate) {
 
     if (isInHouse) {
       const rawCode = (codeIdx !== -1 && rowData[codeIdx]) ? rowData[codeIdx].toString().trim().toUpperCase() : '';
-      const codeKey = rawCode || `ROW_${index}`;
+      const rIndex = item.rowIndex !== undefined ? item.rowIndex : index;
+      const codeKey = rawCode ? `${rawCode}_${rIndex}` : `ROW_${rIndex}`;
 
       if (!bookingsByCode[codeKey]) {
         bookingsByCode[codeKey] = {
@@ -1429,14 +1430,15 @@ function renderInHouseList(container, searchQuery, targetDateInput, badgeCountEl
 
     if (isInHouse) {
       const rawCode = (codeIdx !== -1 && rowData[codeIdx]) ? rowData[codeIdx].toString().trim().toUpperCase() : '';
-      const codeKey = rawCode || `ROW_${index}`;
+      const rIndex = item.rowIndex || index + 1;
+      const codeKey = rawCode ? `${rawCode}_${rIndex}` : `ROW_${rIndex}`;
 
       if (!bookingsByCode[codeKey]) {
         bookingsByCode[codeKey] = {
           code: rawCode,
           name: (nameIdx !== -1 && rowData[nameIdx]) ? rowData[nameIdx].toString().trim() : '',
           row: rowData,
-          rowIndex: item.rowIndex || index + 1,
+          rowIndex: rIndex,
           totalActivityPax: 0,
           roomPax: 0,
           roomStr: (roomIdx !== -1 && rowData[roomIdx]) ? rowData[roomIdx].toString().trim() : '—'
