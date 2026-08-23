@@ -92,10 +92,12 @@ function parseDate(value) {
     if (!isNaN(d)) return d;
   }
 
-  // 5. Try native parse for textual dates (e.g. "June 10, 2026")
-  const nativeDate = new Date(trimmed);
-  if (!isNaN(nativeDate) && !/^\d+$/.test(trimmed)) {
-    return nativeDate;
+  // 5. Try native parse for textual dates with explicit year (e.g. "June 10, 2026")
+  if (/\b(19|20)\d{2}\b/.test(trimmed)) {
+    const nativeDate = new Date(trimmed);
+    if (!isNaN(nativeDate) && !/^\d+$/.test(trimmed)) {
+      return nativeDate;
+    }
   }
 
   // 6. Handle textual formats with ordinal suffixes and typos (e.g. "20th March", "2nd June", "24thJuly", "17th Marcj")
@@ -256,4 +258,4 @@ function getStayDays(checkInStr, checkOutStr) {
   return days;
 }
 
-module.exports = { detectChanges, buildCurrentMonthMap, parseDate, isCurrentMonth, rowKey, findHeaderRowIndex, getMonthNameFromText, getStayDays };
+module.exports = { detectChanges, buildCurrentMonthMap, parseDate, isCurrentMonth, rowKey, findHeaderRowIndex, getMonthNameFromText, getMonthIndexFromText, getStayDays };
