@@ -359,8 +359,14 @@ function buildReport(rows) {
       const code  = codeIdx !== -1   ? (row[codeIdx]  || '').toString().trim() : '';
       const name  = nameIdx !== -1   ? (row[nameIdx]  || '').toString().trim() : '';
 
-      // Skip rows with no code AND no name (likely empty or metadata rows)
-      if (!code && !name) continue;
+      const checkInRaw  = checkInIdx  !== -1 ? (row[checkInIdx]  || '').toString().trim() : '';
+      const checkOutRaw = checkOutIdx !== -1 ? (row[checkOutIdx] || '').toString().trim() : '';
+
+      const checkInDate  = parseDate(checkInRaw);
+      const checkOutDate = parseDate(checkOutRaw);
+
+      // Skip rows with no code AND no name AND no valid dates (likely empty or metadata rows)
+      if (!code && !name && !checkInDate && !checkOutDate) continue;
 
       // Parse pax from all three activity columns
       const snorkelStr = snorkelIdx !== -1 ? (row[snorkelIdx] || '').toString().trim() : '';
@@ -378,12 +384,6 @@ function buildReport(rows) {
         c: snorkel.c + diving.c + course.c,
         b: snorkel.b + diving.b + course.b,
       };
-
-      const checkInRaw  = checkInIdx  !== -1 ? (row[checkInIdx]  || '').toString().trim() : '';
-      const checkOutRaw = checkOutIdx !== -1 ? (row[checkOutIdx] || '').toString().trim() : '';
-
-      const checkInDate  = parseDate(checkInRaw);
-      const checkOutDate = parseDate(checkOutRaw);
 
       const customer = { code, name, pax, snorkel, diving, course, snorkelStr, divingStr, courseStr };
 
