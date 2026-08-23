@@ -244,7 +244,7 @@ app.get('/api/in-house', requireAuth, async (req, res) => {
           };
         }
 
-        bookingsByCode[codeKey].totalActivityPax += getRowActivityPax(row);
+        bookingsByCode[codeKey].totalActivityPax = Math.max(bookingsByCode[codeKey].totalActivityPax, getRowActivityPax(row));
 
         if (roomPaxIdx !== -1 && row[roomPaxIdx] && row[roomPaxIdx] !== '—') {
           const parsedRoomPax = parsePaxString(row[roomPaxIdx].toString());

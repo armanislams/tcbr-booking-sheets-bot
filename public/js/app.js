@@ -607,7 +607,7 @@ function updateInHouseStats(targetDate) {
         };
       }
 
-      bookingsByCode[codeKey].totalActivityPax += getRowActivityPaxClient(rowData);
+      bookingsByCode[codeKey].totalActivityPax = Math.max(bookingsByCode[codeKey].totalActivityPax, getRowActivityPaxClient(rowData));
 
       if (roomPaxIdx !== -1 && rowData[roomPaxIdx] && rowData[roomPaxIdx] !== '—') {
         const parsedPax = parsePaxString(rowData[roomPaxIdx].toString());
@@ -1438,7 +1438,7 @@ function renderInHouseList(container, searchQuery, targetDateInput, badgeCountEl
         };
       }
 
-      bookingsByCode[codeKey].totalActivityPax += getRowActivityPaxClient(rowData);
+      bookingsByCode[codeKey].totalActivityPax = Math.max(bookingsByCode[codeKey].totalActivityPax, getRowActivityPaxClient(rowData));
       if (roomPaxIdx !== -1 && rowData[roomPaxIdx] && rowData[roomPaxIdx] !== '—') {
         const parsedPax = parsePaxString(rowData[roomPaxIdx].toString());
         if (parsedPax > 0 && bookingsByCode[codeKey].roomPax === 0) {
