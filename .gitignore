@@ -13,4 +13,7 @@ node_modules/
 
 # OS files
 .DS_Store
-Thumbs.db
+Thumbs.db
+
+# Temporary scratch files
+scratch/

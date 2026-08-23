@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sheets-bot-v1';
+const CACHE_NAME = 'sheets-bot-v3';
 const ASSETS = [
   '/',
   '/index.html',

@@ -128,8 +128,8 @@ function showToast(msg) {
 let activeTab = 'changelog'; // 'changelog', 'bookings', or 'allbookings'
 let displayLimit = 50; // Client-side pagination limit for rendering speed
 
-const DASHBOARD_CACHE_KEY = 'sheets_bot_dashboard_cache';
-const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes cache TTL
+const DASHBOARD_CACHE_KEY = 'sheets_bot_dashboard_cache_v3';
+const CACHE_TTL_MS = 10 * 1000; // 10 seconds cache TTL
 
 function applyDashboardData(data) {
   allHistory = data.history || [];
