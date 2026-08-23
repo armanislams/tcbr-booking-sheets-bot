@@ -7,6 +7,10 @@ const DATA_DIR     = path.join(__dirname, '..', 'data');
 const SNAPSHOT_FILE = path.join(DATA_DIR, 'snapshot.json');
 const HISTORY_FILE  = path.join(DATA_DIR, 'change_history.json');
 const STATS_FILE    = path.join(DATA_DIR, 'stats.json');
+const USERS_FILE    = path.join(DATA_DIR, 'users.json');
+const AUDIT_FILE    = path.join(DATA_DIR, 'audit_logs.json');
+const NOTES_FILE    = path.join(DATA_DIR, 'notes.json');
+const CONFIG_FILE   = path.join(DATA_DIR, 'config.json');
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -475,6 +479,182 @@ async function getTotalChecksCount() {
   }
 }
 
+// ─── User Persistence ────────────────────────────────────────────────────────
+async function loadUsers() {
+  const db = await getDb();
+  if (db) {
+    try {
+      return await db.collection('users').find({}).toArray();
+    } catch (err) {
+      console.error('   ❌ MongoDB loadUsers error:', err.message);
+    }
+  }
+
+  if (!fs.existsSync(USERS_FILE)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
+  } catch {
+    return [];
+  }
+}
+
+async function saveUsers(users) {
+  const db = await getDb();
+  if (db) {
+    try {
+      const collection = db.collection('users');
+      await collection.deleteMany({});
+      if (users.length > 0) {
+        await collection.insertMany(users);
+      }
+      return;
+    } catch (err) {
+      console.error('   ❌ MongoDB saveUsers error:', err.message);
+    }
+  }
+
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf-8');
+}
+
+// ─── Audit Log Persistence ────────────────────────────────────────────────────
+async function appendAuditLog(entry) {
+  const auditDoc = {
+    id: entry.id || require('crypto').randomUUID(),
+    timestamp: new Date().toISOString(),
+    username: entry.username || 'System',
+    role: entry.role || 'system',
+    action: entry.action,
+    details: entry.details || '',
+    ip: entry.ip || 'internal'
+  };
+
+  const db = await getDb();
+  if (db) {
+    try {
+      await db.collection('audit_logs').insertOne(auditDoc);
+      return auditDoc;
+    } catch (err) {
+      console.error('   ❌ MongoDB appendAuditLog error:', err.message);
+    }
+  }
+
+  let logs = [];
+  if (fs.existsSync(AUDIT_FILE)) {
+    try {
+      logs = JSON.parse(fs.readFileSync(AUDIT_FILE, 'utf-8'));
+    } catch {}
+  }
+  logs.unshift(auditDoc);
+  if (logs.length > 500) logs = logs.slice(0, 500); // keep last 500
+  fs.writeFileSync(AUDIT_FILE, JSON.stringify(logs, null, 2), 'utf-8');
+  return auditDoc;
+}
+
+async function loadAuditLogs() {
+  const db = await getDb();
+  if (db) {
+    try {
+      return await db.collection('audit_logs').find({}).sort({ timestamp: -1 }).limit(200).toArray();
+    } catch (err) {
+      console.error('   ❌ MongoDB loadAuditLogs error:', err.message);
+    }
+  }
+
+  if (!fs.existsSync(AUDIT_FILE)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(AUDIT_FILE, 'utf-8'));
+  } catch {
+    return [];
+  }
+}
+
+// ─── Internal Notes Persistence ───────────────────────────────────────────────
+async function addNote({ targetId, note, createdBy }) {
+  const noteDoc = {
+    id: require('crypto').randomUUID(),
+    targetId, // Event ID or Booking Row key
+    note,
+    createdBy,
+    createdAt: new Date().toISOString()
+  };
+
+  const db = await getDb();
+  if (db) {
+    try {
+      await db.collection('notes').insertOne(noteDoc);
+      return noteDoc;
+    } catch (err) {
+      console.error('   ❌ MongoDB addNote error:', err.message);
+    }
+  }
+
+  let notes = [];
+  if (fs.existsSync(NOTES_FILE)) {
+    try { notes = JSON.parse(fs.readFileSync(NOTES_FILE, 'utf-8')); } catch {}
+  }
+  notes.unshift(noteDoc);
+  fs.writeFileSync(NOTES_FILE, JSON.stringify(notes, null, 2), 'utf-8');
+  return noteDoc;
+}
+
+async function getNotes() {
+  const db = await getDb();
+  if (db) {
+    try {
+      return await db.collection('notes').find({}).sort({ createdAt: -1 }).toArray();
+    } catch (err) {
+      console.error('   ❌ MongoDB getNotes error:', err.message);
+    }
+  }
+
+  if (!fs.existsSync(NOTES_FILE)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(NOTES_FILE, 'utf-8'));
+  } catch {
+    return [];
+  }
+}
+
+// ─── Bot Dynamic Configuration Persistence ──────────────────────────────────
+async function loadBotConfig() {
+  const db = await getDb();
+  if (db) {
+    try {
+      const doc = await db.collection('config').findOne({ _id: 'bot_settings' });
+      if (doc) return doc.config;
+    } catch (err) {
+      console.error('   ❌ MongoDB loadBotConfig error:', err.message);
+    }
+  }
+
+  if (!fs.existsSync(CONFIG_FILE)) {
+    return { isPaused: false, quietHoursStart: 23, quietHoursEnd: 7, snoozeHours: parseInt(process.env.ERROR_ALERT_SNOOZE_HOURS || '6', 10) };
+  }
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+  } catch {
+    return { isPaused: false, quietHoursStart: 23, quietHoursEnd: 7, snoozeHours: parseInt(process.env.ERROR_ALERT_SNOOZE_HOURS || '6', 10) };
+  }
+}
+
+async function saveBotConfig(config) {
+  const db = await getDb();
+  if (db) {
+    try {
+      await db.collection('config').updateOne(
+        { _id: 'bot_settings' },
+        { $set: { config, updatedAt: new Date().toISOString() } },
+        { upsert: true }
+      );
+      return;
+    } catch (err) {
+      console.error('   ❌ MongoDB saveBotConfig error:', err.message);
+    }
+  }
+
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
+}
+
 module.exports = {
   loadSnapshot,
   saveSnapshot,
@@ -486,5 +666,14 @@ module.exports = {
   acknowledgeEvent,
   clearMonthData,
   incrementTotalChecks,
-  getTotalChecksCount
+  getTotalChecksCount,
+  loadUsers,
+  saveUsers,
+  appendAuditLog,
+  loadAuditLogs,
+  addNote,
+  getNotes,
+  loadBotConfig,
+  saveBotConfig
 };
+
