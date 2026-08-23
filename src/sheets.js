@@ -418,9 +418,16 @@ async function enrichSheetRows(rows) {
 
   const codeIndex = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'CODE');
   const nameIndex = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'NAME');
+  const picIndex = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'PIC');
+  const colorIndex = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROW_COLOR');
   
   headers.push('ROOM');
   headers.push('ROOM_PAX');
+
+  let lastBlockCode = '';
+  let lastBlockPic = '';
+  let lastBlockName = '';
+  let lastBlockColor = '';
 
   for (let i = headerIndex + 1; i < rows.length; i++) {
     const row = rows[i];
@@ -429,19 +436,40 @@ async function enrichSheetRows(rows) {
     }
 
     let code = codeIndex !== -1 ? (row[codeIndex] || '').toString().trim().toUpperCase() : '';
+    let nameVal = nameIndex !== -1 ? (row[nameIndex] || '').toString().trim() : '';
+    let picVal = picIndex !== -1 ? (row[picIndex] || '').toString().trim() : '';
+    let colorVal = colorIndex !== -1 ? (row[colorIndex] || '').toString().trim() : '';
+
+    if (code || nameVal) {
+      lastBlockCode = code;
+      lastBlockPic = picVal;
+      lastBlockName = nameVal;
+      lastBlockColor = colorVal;
+    } else if (!code && !nameVal && colorVal && colorVal !== 'WHITE' && colorVal === lastBlockColor) {
+      if (codeIndex !== -1 && lastBlockCode) {
+        row[codeIndex] = lastBlockCode;
+        code = lastBlockCode;
+      }
+      if (picIndex !== -1 && lastBlockPic) {
+        row[picIndex] = lastBlockPic;
+      }
+      if (nameIndex !== -1 && lastBlockName) {
+        row[nameIndex] = lastBlockName;
+        nameVal = lastBlockName;
+      }
+    }
+
     // If code is empty, try to inherit it from another booking row for the same customer name
-    if (!code && nameIndex !== -1) {
-      const nameVal = (row[nameIndex] || '').toString().trim();
-      if (nameVal) {
-        const matchRow = rows.find(r => {
-          if (!r) return false;
-          const rName = nameIndex !== -1 ? (r[nameIndex] || '').toString().trim() : '';
-          const rCode = codeIndex !== -1 ? (r[codeIndex] || '').toString().trim().toUpperCase() : '';
-          return rName.toLowerCase() === nameVal.toLowerCase() && rCode;
-        });
-        if (matchRow) {
-          code = matchRow[codeIndex].toString().trim().toUpperCase();
-        }
+    if (!code && nameIndex !== -1 && nameVal) {
+      const matchRow = rows.find(r => {
+        if (!r) return false;
+        const rName = nameIndex !== -1 ? (r[nameIndex] || '').toString().trim() : '';
+        const rCode = codeIndex !== -1 ? (r[codeIndex] || '').toString().trim().toUpperCase() : '';
+        return rName.toLowerCase() === nameVal.toLowerCase() && rCode;
+      });
+      if (matchRow) {
+        code = matchRow[codeIndex].toString().trim().toUpperCase();
+        if (codeIndex !== -1) row[codeIndex] = code;
       }
     }
 
