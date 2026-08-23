@@ -3,6 +3,25 @@ let currentBookings = [];
 let allBookings = [];
 let bookingsHeaders = [];
 let activeFilter = 'all';
+let currentUser = null;
+
+// ── Auth Fetch Wrapper ──
+async function authFetch(url, options = {}) {
+  const token = localStorage.getItem('sheets_auth_token');
+  options.headers = options.headers || {};
+  if (token) {
+    options.headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  const res = await fetch(url, options);
+  if (res.status === 401) {
+    localStorage.removeItem('sheets_auth_token');
+    currentUser = null;
+    showAuthOverlay();
+    throw new Error('Unauthorized');
+  }
+  return res;
+}
 
 // ── Trigger manual sheet check from dashboard ──
 async function triggerManualCheck() {
@@ -14,7 +33,7 @@ async function triggerManualCheck() {
   btn.innerHTML = '<span class="refresh-icon spinning">⏱</span> Checking...';
   
   try {
-    const res = await fetch('/api/check', { method: 'POST' });
+    const res = await authFetch('/api/check', { method: 'POST' });
     const data = await res.json();
     
     if (res.ok && data.success) {
@@ -24,8 +43,10 @@ async function triggerManualCheck() {
       showToast('❌ Error: ' + (data.error || 'Failed to complete check.'));
     }
   } catch (err) {
-    console.error(err);
-    showToast('❌ Network error while triggering check.');
+    if (err.message !== 'Unauthorized') {
+      console.error(err);
+      showToast('❌ Network error while triggering check.');
+    }
   } finally {
     btn.disabled = false;
     btn.innerHTML = originalText;
@@ -37,18 +58,11 @@ async function acknowledgeCard(eventId, category, buttonEl, event) {
   if (event) event.stopPropagation();
   if (!eventId) return;
   
-  // Retrieve the last used name, if any
-  const savedName = localStorage.getItem('ack_username') || '';
-  
-  // Prompt the user for their name (pre-filled with the last used name)
+  const savedName = localStorage.getItem('ack_username') || currentUser?.username || '';
   const username = prompt("Please enter your name for acknowledgment:", savedName);
-  
-  // If the user cancels the prompt, abort the acknowledgment
   if (username === null) return;
   
-  const finalUsername = username.trim() || 'Dashboard User';
-  
-  // Save the name for future acknowledgments
+  const finalUsername = username.trim() || currentUser?.username || 'Dashboard User';
   if (username.trim()) {
     localStorage.setItem('ack_username', finalUsername);
   }
@@ -58,7 +72,7 @@ async function acknowledgeCard(eventId, category, buttonEl, event) {
   buttonEl.textContent = 'Acknowledging...';
   
   try {
-    const res = await fetch('/api/history/acknowledge', {
+    const res = await authFetch('/api/history/acknowledge', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: eventId, user: finalUsername, category })
@@ -72,10 +86,12 @@ async function acknowledgeCard(eventId, category, buttonEl, event) {
       buttonEl.textContent = originalText;
     }
   } catch (err) {
-    console.error(err);
-    showToast('❌ Error connecting to server.');
-    buttonEl.disabled = false;
-    buttonEl.textContent = originalText;
+    if (err.message !== 'Unauthorized') {
+      console.error(err);
+      showToast('❌ Error connecting to server.');
+      buttonEl.disabled = false;
+      buttonEl.textContent = originalText;
+    }
   }
 }
 
@@ -184,10 +200,10 @@ async function loadData(forceRefresh = false) {
 
   try {
     const [historyRes, statusRes, currentBookingsRes, allBookingsRes] = await Promise.all([
-      fetch('/api/history'),
-      fetch('/api/status'),
-      fetch('/api/current-bookings'),
-      fetch('/api/all-bookings'),
+      authFetch('/api/history'),
+      authFetch('/api/status'),
+      authFetch('/api/current-bookings'),
+      authFetch('/api/all-bookings'),
     ]);
 
     const history = await historyRes.json();
@@ -1315,50 +1331,7 @@ window.addEventListener('appinstalled', (evt) => {
   showToast('🎉 App installed successfully!');
 });
 
-// ── Privacy & Security Notice Modal Logic ─────────────────────────────
-const AUTH_NOTICE_KEY = 'privacy_auth_notice_aug21';
 
-function openAuthNoticeModal() {
-  const backdrop = document.getElementById('auth-notice-backdrop');
-  if (backdrop) {
-    backdrop.classList.add('visible');
-  }
-}
-
-function dismissAuthNoticeModal() {
-  localStorage.setItem(AUTH_NOTICE_KEY, 'true');
-  closeAuthNoticeModalTemporarily();
-  if (typeof showToast === 'function') {
-    showToast('👍 Notice acknowledged! You can re-open it anytime from the top header.');
-  }
-}
-
-function closeAuthNoticeModalTemporarily() {
-  const backdrop = document.getElementById('auth-notice-backdrop');
-  if (backdrop) {
-    backdrop.classList.remove('visible');
-  }
-}
-
-function handleBackdropClick(event) {
-  if (event.target.id === 'auth-notice-backdrop') {
-    closeAuthNoticeModalTemporarily();
-  }
-}
-
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    closeAuthNoticeModalTemporarily();
-  }
-});
-
-// Automatically show popup on first visit if not dismissed yet
-window.addEventListener('DOMContentLoaded', () => {
-  const isDismissed = localStorage.getItem(AUTH_NOTICE_KEY);
-  if (!isDismissed) {
-    setTimeout(openAuthNoticeModal, 400);
-  }
-});
 
 // ── Render In-House Guests List View ─────────────────────────────────────────
 function renderInHouseList(container, searchQuery, targetDateInput, badgeCountEl) {
@@ -1552,6 +1525,596 @@ function renderInHouseList(container, searchQuery, targetDateInput, badgeCountEl
   container.innerHTML = html;
 }
 
-// ── Auto-refresh every 2 minutes & initial data load ─────────────────────────
-loadData();
-setInterval(() => loadData(true), 120_000);
+// ── Authentication & Admin Control Center Logic ─────────────────────────────
+
+function togglePasswordVisibility(inputId, btnEl) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  if (input.type === 'password') {
+    input.type = 'text';
+    if (btnEl) btnEl.textContent = '🙈';
+  } else {
+    input.type = 'password';
+    if (btnEl) btnEl.textContent = '👁️';
+  }
+}
+
+function showAuthOverlay() {
+  const overlay = document.getElementById('auth-overlay');
+  if (overlay) overlay.style.display = 'flex';
+}
+
+function hideAuthOverlay() {
+  const overlay = document.getElementById('auth-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function showAuthView(viewName) {
+  const loginView = document.getElementById('login-card-view');
+  const regView = document.getElementById('register-card-view');
+  const pendingView = document.getElementById('pending-card-view');
+
+  if (loginView) loginView.style.display = viewName === 'login' ? 'block' : 'none';
+  if (regView) regView.style.display = viewName === 'register' ? 'block' : 'none';
+  if (pendingView) pendingView.style.display = viewName === 'pending' ? 'block' : 'none';
+}
+
+async function handleRegisterSubmit(e) {
+  e.preventDefault();
+  const nameInp = document.getElementById('reg-name');
+  const userInp = document.getElementById('reg-username');
+  const emailInp = document.getElementById('reg-email');
+  const pwdInp = document.getElementById('reg-password');
+  const errorBox = document.getElementById('register-error');
+  const submitBtn = document.getElementById('reg-submit-btn');
+
+  if (!nameInp || !userInp || !emailInp || !pwdInp) return;
+  errorBox.style.display = 'none';
+
+  const password = pwdInp.value;
+  if (!/\d/.test(password) || !/[A-Z]/.test(password)) {
+    errorBox.textContent = 'Password must contain at least 1 capital letter (A-Z) and 1 number (0-9).';
+    errorBox.style.display = 'block';
+    return;
+  }
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Registering...';
+
+  try {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        displayName: nameInp.value.trim(),
+        username: userInp.value.trim(),
+        email: emailInp.value.trim(),
+        password
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showAuthView('pending');
+    } else {
+      errorBox.textContent = data.error || 'Registration failed.';
+      errorBox.style.display = 'block';
+    }
+  } catch (err) {
+    errorBox.textContent = 'Network error during registration.';
+    errorBox.style.display = 'block';
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Register Account ➔';
+  }
+}
+
+async function handleLoginSubmit(e) {
+  e.preventDefault();
+  const usernameInput = document.getElementById('login-username');
+  const passwordInput = document.getElementById('login-password');
+  const errorBox = document.getElementById('login-error');
+  const submitBtn = document.getElementById('login-submit-btn');
+
+  if (!usernameInput || !passwordInput) return;
+  errorBox.style.display = 'none';
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Signing in...';
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: usernameInput.value.trim(),
+        password: passwordInput.value
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      // 30-Day TTL session storage
+      const expiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000);
+      localStorage.setItem('sheets_auth_token', data.token);
+      localStorage.setItem('sheets_auth_expires', expiresAt.toString());
+
+      currentUser = data.user;
+      hideAuthOverlay();
+      setupUserUI(data.user);
+      await loadData(true);
+      showToast(`👋 Welcome back, ${data.user.displayName}!`);
+    } else {
+      if (data.error && data.error.includes('PENDING_APPROVAL')) {
+        showAuthView('pending');
+      } else {
+        errorBox.textContent = data.error || 'Login failed. Please check your credentials.';
+        errorBox.style.display = 'block';
+      }
+    }
+  } catch (err) {
+    errorBox.textContent = 'Network error connecting to auth server.';
+    errorBox.style.display = 'block';
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Sign In ➔';
+  }
+}
+
+async function checkAuth() {
+  const token = localStorage.getItem('sheets_auth_token');
+  const expiresStr = localStorage.getItem('sheets_auth_expires');
+
+  if (!token || !expiresStr) {
+    showAuthOverlay();
+    showAuthView('login');
+    return;
+  }
+
+  // Check 30-day TTL expiration
+  if (Date.now() > parseInt(expiresStr, 10)) {
+    localStorage.removeItem('sheets_auth_token');
+    localStorage.removeItem('sheets_auth_expires');
+    showAuthOverlay();
+    showAuthView('login');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/auth/me', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      currentUser = data.user;
+      hideAuthOverlay();
+      setupUserUI(data.user);
+      loadData();
+    } else {
+      localStorage.removeItem('sheets_auth_token');
+      localStorage.removeItem('sheets_auth_expires');
+      showAuthOverlay();
+      showAuthView('login');
+    }
+  } catch {
+    showAuthOverlay();
+    showAuthView('login');
+  }
+}
+
+function setupUserUI(user) {
+  const badge = document.getElementById('user-profile-badge');
+  const roleTag = document.getElementById('user-role-tag');
+  const nameLabel = document.getElementById('user-display-name');
+  const adminBtn = document.getElementById('admin-portal-btn');
+  const logoutBtn = document.getElementById('logout-btn');
+
+  if (badge) badge.style.display = 'flex';
+  if (logoutBtn) logoutBtn.style.display = 'inline-flex';
+
+  if (roleTag) {
+    roleTag.textContent = (user.role || 'OPERATOR').toUpperCase();
+    if (user.role === 'admin') {
+      roleTag.style.background = 'var(--red-bg)';
+      roleTag.style.color = 'var(--red)';
+    } else {
+      roleTag.style.background = 'var(--accent-glow)';
+      roleTag.style.color = 'var(--accent)';
+    }
+  }
+
+  if (nameLabel) nameLabel.textContent = user.displayName || user.username;
+  if (adminBtn) adminBtn.style.display = user.role === 'admin' ? 'inline-flex' : 'none';
+}
+
+async function logoutUser() {
+  try {
+    await authFetch('/api/auth/logout', { method: 'POST' });
+  } catch {}
+  localStorage.removeItem('sheets_auth_token');
+  localStorage.removeItem('sheets_auth_expires');
+  currentUser = null;
+  location.reload();
+}
+
+// ── Admin Portal Tabs & Actions ─────────────────────────────────────────────
+
+function openAdminPortal() {
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('❌ Admin privileges required.');
+    return;
+  }
+  const modal = document.getElementById('admin-modal');
+  if (modal) {
+    modal.style.display = 'flex';
+    setAdminTab('users');
+  }
+}
+
+function closeAdminPortal() {
+  const modal = document.getElementById('admin-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function setAdminTab(tabName) {
+  const tabs = ['users', 'bot', 'tg', 'data', 'telem', 'audit'];
+  tabs.forEach(t => {
+    const btn = document.getElementById(`adm-tab-${t}`);
+    const panel = document.getElementById(`adm-panel-${t}`);
+    if (btn) btn.classList.toggle('active', t === tabName);
+    if (panel) panel.style.display = t === tabName ? 'block' : 'none';
+  });
+
+  if (tabName === 'users') loadAdminUsers();
+  else if (tabName === 'bot') loadBotSettingsUI();
+  else if (tabName === 'telem') loadTelemetryData();
+  else if (tabName === 'audit') loadAuditLogsUI();
+}
+
+// ── Admin: User Management ──
+async function loadAdminUsers() {
+  const pendingTbody = document.getElementById('adm-pending-users-tbody');
+  const activeTbody = document.getElementById('adm-users-tbody');
+  const pendingBadge = document.getElementById('pending-users-count-badge');
+
+  if (pendingTbody) pendingTbody.innerHTML = '<tr><td colspan="4" style="padding: 12px; text-align: center;">Loading...</td></tr>';
+  if (activeTbody) activeTbody.innerHTML = '<tr><td colspan="5" style="padding: 12px; text-align: center;">Loading...</td></tr>';
+
+  try {
+    const res = await authFetch('/api/admin/users');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    const users = data.users || [];
+    const pendingUsers = users.filter(u => u.approved === false);
+    const activeUsers = users.filter(u => u.approved !== false);
+
+    if (pendingBadge) {
+      pendingBadge.textContent = `${pendingUsers.length} Pending`;
+      pendingBadge.style.background = pendingUsers.length > 0 ? 'var(--yellow-bg)' : 'var(--bg-primary)';
+    }
+
+    // Render Pending Approvals
+    let pendingHtml = '';
+    pendingUsers.forEach(u => {
+      pendingHtml += `
+        <tr style="border-bottom: 1px solid var(--border-light); background: rgba(210,153,34,0.03);">
+          <td style="padding: 10px; font-weight: 600;">${u.username}</td>
+          <td style="padding: 10px; color: var(--text-primary);">${u.displayName || '—'}</td>
+          <td style="padding: 10px; font-size:0.78rem; color: var(--text-muted);">${new Date(u.createdAt).toLocaleDateString()}</td>
+          <td style="padding: 10px; text-align: right; display: flex; gap: 6px; justify-content: flex-end;">
+            <button class="action-btn" onclick="approveUserAccount('${u.id}', '${u.username}')" style="background:var(--green-bg); color:var(--green); border-color:rgba(63,185,80,0.3); font-size:0.78rem; padding:5px 10px; font-weight:600;">✓ Approve</button>
+            <button class="action-btn" onclick="deleteUserAccount('${u.id}', '${u.username}')" style="background:var(--red-bg); color:var(--red); border-color:rgba(248,81,73,0.3); font-size:0.75rem; padding:4px 8px;">Reject</button>
+          </td>
+        </tr>
+      `;
+    });
+    if (pendingTbody) pendingTbody.innerHTML = pendingHtml || '<tr><td colspan="4" style="padding: 14px; text-align: center; color: var(--text-muted);">No pending registration requests.</td></tr>';
+
+    // Render Active Users
+    let activeHtml = '';
+    activeUsers.forEach(u => {
+      const isSelf = u.id === currentUser.id;
+      activeHtml += `
+        <tr style="border-bottom: 1px solid var(--border-light);">
+          <td style="padding: 10px; font-weight: 600;">${u.username} ${u.isSeed ? '<span class="badge" style="font-size:0.65rem;">SEED</span>' : ''}</td>
+          <td style="padding: 10px; color: var(--text-secondary);">${u.displayName || '—'}</td>
+          <td style="padding: 10px;"><span class="badge" style="font-size:0.7rem; text-transform:uppercase;">${u.role}</span></td>
+          <td style="padding: 10px; font-size:0.78rem; color: var(--text-muted);">${new Date(u.createdAt).toLocaleDateString()}</td>
+          <td style="padding: 10px; text-align: right;">
+            ${isSelf ? '<span style="font-size:0.75rem; color:var(--text-muted);">Active Session</span>' : `<button class="action-btn" onclick="deleteUserAccount('${u.id}', '${u.username}')" style="background:var(--red-bg); color:var(--red); border-color:rgba(248,81,73,0.3); font-size:0.75rem; padding:4px 8px;">Delete</button>`}
+          </td>
+        </tr>
+      `;
+    });
+    if (activeTbody) activeTbody.innerHTML = activeHtml || '<tr><td colspan="5" style="padding: 16px; text-align: center;">No active users found.</td></tr>';
+
+  } catch (err) {
+    if (activeTbody) activeTbody.innerHTML = `<tr><td colspan="5" style="padding: 16px; text-align: center; color: var(--red);">Error: ${err.message}</td></tr>`;
+  }
+}
+
+async function approveUserAccount(userId, username) {
+  try {
+    const res = await authFetch(`/api/admin/users/${userId}/approve`, { method: 'POST' });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(`✅ Approved account for ${username}`);
+      loadAdminUsers();
+    } else {
+      showToast(`❌ ${data.error || 'Approval failed'}`);
+    }
+  } catch {
+    showToast('❌ Network error approving user account.');
+  }
+}
+
+function toggleAddUserForm() {
+  const card = document.getElementById('add-user-form-card');
+  if (card) card.style.display = card.style.display === 'none' ? 'block' : 'none';
+}
+
+async function handleCreateUserSubmit(e) {
+  e.preventDefault();
+  const username = document.getElementById('new-user-username').value;
+  const displayName = document.getElementById('new-user-display').value;
+  const password = document.getElementById('new-user-password').value;
+  const role = document.getElementById('new-user-role').value;
+
+  try {
+    const res = await authFetch('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, displayName, password, role })
+    });
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      showToast(`✅ Created approved user ${username}`);
+      toggleAddUserForm();
+      loadAdminUsers();
+    } else {
+      showToast(`❌ ${data.error || 'Failed to create user'}`);
+    }
+  } catch (err) {
+    showToast(`❌ Error creating user.`);
+  }
+}
+
+async function deleteUserAccount(userId, username) {
+  if (!confirm(`Are you sure you want to delete user account "${username}"?`)) return;
+  try {
+    const res = await authFetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(`🗑️ User ${username} deleted.`);
+      loadAdminUsers();
+    } else {
+      showToast(`❌ ${data.error || 'Delete failed'}`);
+    }
+  } catch {
+    showToast('❌ Network error deleting user.');
+  }
+}
+
+// ── Admin: Bot Settings & Quiet Hours ──
+async function loadBotSettingsUI() {
+  try {
+    const res = await authFetch('/api/admin/bot/settings');
+    const data = await res.json();
+    if (!res.ok) return;
+
+    const cfg = data.config || {};
+    const pauseBtn = document.getElementById('bot-pause-toggle-btn');
+    if (pauseBtn) {
+      pauseBtn.textContent = cfg.isPaused ? '▶️ Resume Bot' : '⏸ Pause Bot';
+      pauseBtn.style.background = cfg.isPaused ? 'var(--green-bg)' : 'var(--red-bg)';
+      pauseBtn.style.color = cfg.isPaused ? 'var(--green)' : 'var(--red)';
+    }
+
+    const startInp = document.getElementById('qh-start');
+    const endInp = document.getElementById('qh-end');
+    const snoozeInp = document.getElementById('qh-snooze');
+
+    if (startInp) startInp.value = cfg.quietHoursStart ?? 23;
+    if (endInp) endInp.value = cfg.quietHoursEnd ?? 7;
+    if (snoozeInp) snoozeInp.value = cfg.snoozeHours ?? 6;
+  } catch {}
+}
+
+async function toggleBotPauseState() {
+  try {
+    const currentRes = await authFetch('/api/admin/bot/settings');
+    const currentData = await currentRes.json();
+    const isCurrentlyPaused = !!currentData.config?.isPaused;
+
+    const res = await authFetch('/api/admin/bot/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isPaused: !isCurrentlyPaused })
+    });
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      showToast(data.config.isPaused ? '⏸ Bot loop paused.' : '▶️ Bot loop resumed.');
+      loadBotSettingsUI();
+    }
+  } catch {
+    showToast('❌ Failed to toggle bot state.');
+  }
+}
+
+async function handleQuietHoursSubmit(e) {
+  e.preventDefault();
+  const start = parseInt(document.getElementById('qh-start').value, 10);
+  const end = parseInt(document.getElementById('qh-end').value, 10);
+  const snooze = parseInt(document.getElementById('qh-snooze').value, 10);
+
+  try {
+    const res = await authFetch('/api/admin/bot/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quietHoursStart: start, quietHoursEnd: end, snoozeHours: snooze })
+    });
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      showToast('✅ Bot settings updated.');
+    } else {
+      showToast(`❌ ${data.error || 'Update failed'}`);
+    }
+  } catch {
+    showToast('❌ Error updating quiet hours.');
+  }
+}
+
+// ── Admin: Telegram Test Ping ──
+async function sendTelegramTestPing(channelType) {
+  try {
+    const res = await authFetch('/api/admin/telegram/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channelType })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(data.message);
+    } else {
+      showToast(`❌ ${data.error || 'Ping failed'}`);
+    }
+  } catch {
+    showToast('❌ Network error testing Telegram ping.');
+  }
+}
+
+// ── Admin: Data Export & Reset ──
+function downloadExport(type, format) {
+  const token = localStorage.getItem('sheets_auth_token');
+  const url = `/api/admin/export/${type}?format=${format}&token=${encodeURIComponent(token)}`;
+  window.open(url, '_blank');
+}
+
+async function triggerBaselineReset() {
+  if (!confirm('Re-establish baseline snapshot from Google Sheets now?')) return;
+  try {
+    const res = await authFetch('/api/admin/snapshot/reset', { method: 'POST' });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(`✅ Baseline snapshot reset: ${data.message}`);
+      loadData(true);
+    } else {
+      showToast(`❌ ${data.error || 'Reset failed'}`);
+    }
+  } catch {
+    showToast('❌ Network error resetting baseline.');
+  }
+}
+
+// ── Admin: Telemetry Diagnostics ──
+async function loadTelemetryData() {
+  const uptimeEl = document.getElementById('telem-uptime');
+  const memEl = document.getElementById('telem-memory');
+  const pingEl = document.getElementById('telem-sheets-ping');
+  const dbEl = document.getElementById('telem-db-type');
+
+  if (uptimeEl) uptimeEl.textContent = 'Loading...';
+
+  try {
+    const res = await authFetch('/api/admin/telemetry');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    const t = data.telemetry;
+    const hours = Math.floor(t.uptimeSeconds / 3600);
+    const mins = Math.floor((t.uptimeSeconds % 3600) / 60);
+
+    if (uptimeEl) uptimeEl.textContent = `${hours}h ${mins}m`;
+    if (memEl) memEl.textContent = `${t.memoryUsage.heapUsedMB} MB`;
+    if (pingEl) pingEl.textContent = t.sheetsApi.ok ? `${t.sheetsApi.latencyMs} ms` : '❌ Error';
+    if (dbEl) dbEl.textContent = t.dbStatus.connected ? 'MongoDB' : 'Local JSON';
+  } catch (err) {
+    if (uptimeEl) uptimeEl.textContent = 'Error';
+  }
+}
+
+// ── Admin: Audit Trail ──
+async function loadAuditLogsUI() {
+  const tbody = document.getElementById('adm-audit-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="5" style="padding: 16px; text-align: center;">Loading audit trail...</td></tr>';
+
+  try {
+    const res = await authFetch('/api/admin/audit-logs');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    let html = '';
+    (data.logs || []).forEach(l => {
+      html += `
+        <tr style="border-bottom: 1px solid var(--border-light);">
+          <td style="padding: 8px; font-size: 0.78rem; color: var(--text-muted);">${new Date(l.timestamp).toLocaleString()}</td>
+          <td style="padding: 8px; font-weight: 600;">${l.username}</td>
+          <td style="padding: 8px;"><code style="background: var(--bg-primary); padding: 2px 4px; border-radius: 4px; font-size: 0.75rem; color: var(--accent);">${l.action}</code></td>
+          <td style="padding: 8px; font-size: 0.75rem; color: var(--text-secondary);">${l.ip || 'internal'}</td>
+          <td style="padding: 8px; color: var(--text-secondary); font-size: 0.8rem;">${l.details || '—'}</td>
+        </tr>
+      `;
+    });
+    tbody.innerHTML = html || '<tr><td colspan="5" style="padding: 16px; text-align: center;">No audit logs recorded yet.</td></tr>';
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="5" style="padding: 16px; text-align: center; color: var(--red);">Error: ${err.message}</td></tr>`;
+  }
+}
+
+// ── Internal Notes ──
+function openNoteModal(targetId) {
+  const modal = document.getElementById('note-modal');
+  const inp = document.getElementById('note-target-id');
+  const txt = document.getElementById('note-content-input');
+
+  if (modal && inp && txt) {
+    inp.value = targetId;
+    txt.value = '';
+    modal.style.display = 'flex';
+  }
+}
+
+function closeNoteModal() {
+  const modal = document.getElementById('note-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function submitInternalNote() {
+  const targetId = document.getElementById('note-target-id')?.value;
+  const note = document.getElementById('note-content-input')?.value;
+
+  if (!targetId || !note || !note.trim()) {
+    showToast('❌ Note content cannot be empty.');
+    return;
+  }
+
+  try {
+    const res = await authFetch('/api/notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetId, note: note.trim() })
+    });
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      showToast('✅ Note added successfully.');
+      closeNoteModal();
+    } else {
+      showToast(`❌ ${data.error || 'Failed to add note'}`);
+    }
+  } catch {
+    showToast('❌ Network error adding note.');
+  }
+}
+
+// ── Initialization & Periodic Auth Checks ──────────────────────────────────
+checkAuth();
+setInterval(() => {
+  if (currentUser) loadData(true);
+}, 120_000);
+

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sheets Monitor Bot — Dashboard</title>
+  <title>Sheets Monitor Bot — Dashboard & Admin Portal</title>
   <meta name="description" content="Real-time dashboard for monitoring Google Sheets changes in the current month." />
   <meta name="theme-color" content="#161b22" />
   <link rel="manifest" href="/manifest.json" />
@@ -14,6 +14,103 @@
   <script src="/js/app.js" defer></script>
 </head>
 <body>
+
+<!-- ── Authentication Wall Overlay ── -->
+<div id="auth-overlay" class="modal-overlay" style="display: flex; z-index: 10000; background: rgba(13, 17, 23, 0.95); backdrop-filter: blur(12px);">
+  
+  <!-- View 1: Login Form -->
+  <div id="login-card-view" class="login-card" style="width: 100%; max-width: 420px; background: var(--bg-card); border: 1px solid var(--border); padding: 32px; border-radius: var(--radius); box-shadow: 0 12px 32px rgba(0,0,0,0.6); text-align: center;">
+    <div style="font-size: 2.5rem; margin-bottom: 8px;">🤖</div>
+    <h2 style="font-size: 1.4rem; font-weight: 700; margin-bottom: 6px; color: var(--text-primary);">Sheets Monitor Bot</h2>
+    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 24px;">Sign in to access your monitoring dashboard</p>
+    
+    <form id="login-form" onsubmit="handleLoginSubmit(event)">
+      <div id="login-error" style="display: none; background: var(--red-bg); color: var(--red); border: 1px solid rgba(248,81,73,0.3); padding: 10px 14px; border-radius: var(--radius-sm); font-size: 0.82rem; margin-bottom: 16px; text-align: left;"></div>
+      
+      <div style="text-align: left; margin-bottom: 16px;">
+        <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Email / Username</label>
+        <input type="text" id="login-username" class="search-input-field" placeholder="name@example.com" required style="width: 100%; padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); outline: none;">
+      </div>
+      
+      <div style="text-align: left; margin-bottom: 20px; position: relative;">
+        <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Password</label>
+        <div style="position: relative;">
+          <input type="password" id="login-password" class="search-input-field" placeholder="Enter password" required style="width: 100%; padding: 10px 40px 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); outline: none;">
+          <button type="button" class="pwd-eye-btn" onclick="togglePasswordVisibility('login-password', this)" title="Show/Hide Password" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: 1.1rem; padding: 4px;">👁️</button>
+        </div>
+      </div>
+
+      <button type="submit" id="login-submit-btn" class="action-btn primary-action-btn" style="width: 100%; justify-content: center; padding: 12px; font-size: 0.95rem; font-weight: 600; margin-bottom: 16px;">
+        Sign In ➔
+      </button>
+
+      <div style="font-size: 0.82rem; color: var(--text-secondary);">
+        Don't have an account? <a href="#" onclick="showAuthView('register'); return false;" style="color: var(--accent); font-weight: 600; text-decoration: none;">Create Account</a>
+      </div>
+    </form>
+  </div>
+
+  <!-- View 2: Self-Registration Form -->
+  <div id="register-card-view" class="login-card" style="display: none; width: 100%; max-width: 440px; background: var(--bg-card); border: 1px solid var(--border); padding: 32px; border-radius: var(--radius); box-shadow: 0 12px 32px rgba(0,0,0,0.6); text-align: center;">
+    <div style="font-size: 2.2rem; margin-bottom: 6px;">📝</div>
+    <h2 style="font-size: 1.3rem; font-weight: 700; margin-bottom: 4px; color: var(--text-primary);">Create an Account</h2>
+    <p style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 20px;">Register your details to request dashboard access</p>
+    
+    <form id="register-form" onsubmit="handleRegisterSubmit(event)">
+      <div id="register-error" style="display: none; background: var(--red-bg); color: var(--red); border: 1px solid rgba(248,81,73,0.3); padding: 10px 14px; border-radius: var(--radius-sm); font-size: 0.82rem; margin-bottom: 16px; text-align: left;"></div>
+      
+      <div style="text-align: left; margin-bottom: 14px;">
+        <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Full Name</label>
+        <input type="text" id="reg-name" class="search-input-field" placeholder="e.g. John Doe" required style="width: 100%; padding: 9px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); outline: none;">
+      </div>
+
+      <div style="text-align: left; margin-bottom: 14px;">
+        <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Username</label>
+        <input type="text" id="reg-username" class="search-input-field" placeholder="e.g. john_doe" required style="width: 100%; padding: 9px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); outline: none;">
+      </div>
+
+      <div style="text-align: left; margin-bottom: 14px;">
+        <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Email Address</label>
+        <input type="email" id="reg-email" class="search-input-field" placeholder="name@example.com" required style="width: 100%; padding: 9px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); outline: none;">
+      </div>
+      
+      <div style="text-align: left; margin-bottom: 20px;">
+        <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Password</label>
+        <div style="position: relative;">
+          <input type="password" id="reg-password" class="search-input-field" placeholder="Create password" required style="width: 100%; padding: 9px 40px 9px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); outline: none;">
+          <button type="button" class="pwd-eye-btn" onclick="togglePasswordVisibility('reg-password', this)" title="Show/Hide Password" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: 1.1rem; padding: 4px;">👁️</button>
+        </div>
+        <div style="font-size: 0.75rem; color: var(--yellow); margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+          <span>⚠️</span> Must contain at least 1 capital letter (A-Z) and 1 number (0-9).
+        </div>
+      </div>
+
+      <button type="submit" id="reg-submit-btn" class="action-btn primary-action-btn" style="width: 100%; justify-content: center; padding: 11px; font-size: 0.92rem; font-weight: 600; margin-bottom: 16px;">
+        Register Account ➔
+      </button>
+
+      <div style="font-size: 0.82rem; color: var(--text-secondary);">
+        Already have an account? <a href="#" onclick="showAuthView('login'); return false;" style="color: var(--accent); font-weight: 600; text-decoration: none;">Sign In</a>
+      </div>
+    </form>
+  </div>
+
+  <!-- View 3: Pending Approval Notice Card -->
+  <div id="pending-card-view" class="login-card" style="display: none; width: 100%; max-width: 440px; background: var(--bg-card); border: 1px solid var(--border); padding: 36px 32px; border-radius: var(--radius); box-shadow: 0 12px 32px rgba(0,0,0,0.6); text-align: center;">
+    <div style="font-size: 3rem; margin-bottom: 12px;">⏳</div>
+    <h2 style="font-size: 1.3rem; font-weight: 700; margin-bottom: 8px; color: var(--yellow);">Account Pending Approval</h2>
+    <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.5;">
+      Your account registration was successful! For security, an administrator must approve your account before you can access the dashboard.
+    </p>
+    <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 14px; border-radius: var(--radius-sm); font-size: 0.82rem; color: var(--text-muted); margin-bottom: 24px;">
+      Please inform your system administrator to approve your account in the Admin Panel.
+    </div>
+    <button type="button" class="action-btn" onclick="showAuthView('login')" style="width: 100%; justify-content: center; padding: 10px;">
+      ← Back to Login
+    </button>
+  </div>
+
+</div>
 
 <!-- ── Header ── -->
 <header class="header">
@@ -29,24 +126,36 @@
     <div class="header-meta">
       <span id="db-status-badge" class="meta-pill" title="Checking database...">🔌 DB: —</span>
       <span class="meta-pill">🕒 Last check: <strong id="last-check-time" style="color:var(--accent)">—</strong></span>
-      <button class="sec-notice-pill" onclick="openAuthNoticeModal()" title="View Privacy & Security Update Notice">
-        🔒 Auth Aug 21
-      </button>
     </div>
 
     <!-- Actions Bar -->
     <div class="header-actions">
+      <!-- User Profile Tag -->
+      <div id="user-profile-badge" class="meta-pill" style="display: none; align-items: center; gap: 8px; background: var(--bg-primary); border: 1px solid var(--border);">
+        <span id="user-role-tag" class="badge" style="font-size: 0.65rem; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; background: var(--accent-glow); color: var(--accent);">OPERATOR</span>
+        <strong id="user-display-name" style="font-size: 0.82rem; color: var(--text-primary);">User</strong>
+      </div>
+
+      <!-- Admin Portal Button -->
+      <button class="action-btn" id="admin-portal-btn" onclick="openAdminPortal()" style="display: none; background: rgba(88, 166, 255, 0.15); color: var(--accent); border-color: rgba(88, 166, 255, 0.3);" title="Open Admin Control Center">
+        <span class="btn-icon">⚙️</span> <span class="btn-text">Admin Panel</span>
+      </button>
+
       <button class="action-btn" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark/Light Mode">
         <span class="btn-icon">🌓</span> <span class="btn-text">Theme</span>
       </button>
-      <button class="action-btn" id="install-btn" style="display: none; background: rgba(63,185,80,0.1); color: var(--green); border-color: rgba(63,185,80,0.3);" title="Install App">
-        <span class="btn-icon">📲</span> <span class="btn-text">Install</span>
-      </button>
+
       <button class="action-btn primary-action-btn" id="trigger-btn" onclick="triggerManualCheck()" title="Run Sheet Check Now">
         <span class="btn-icon">⏱</span> <span class="btn-text">Run Check</span>
       </button>
+
       <button class="action-btn icon-only-btn" id="refresh-btn" onclick="loadData(true)" title="Refresh Dashboard">
         <span class="btn-icon">↻</span>
+      </button>
+
+      <!-- Logout Button -->
+      <button class="action-btn" id="logout-btn" onclick="logoutUser()" style="display: none; background: rgba(248,81,73,0.1); color: var(--red); border-color: rgba(248,81,73,0.3);" title="Sign Out">
+        <span class="btn-icon">🚪</span>
       </button>
     </div>
   </div>
@@ -154,46 +263,262 @@
 
 </main>
 
-<!-- ── Security & Privacy Announcement Modal ── -->
-<div class="modal-backdrop" id="auth-notice-backdrop" onclick="handleBackdropClick(event)">
-  <div class="auth-modal" role="dialog" aria-labelledby="auth-modal-title" aria-modal="true">
-    <div class="modal-header-banner">
-      <button class="modal-close-btn" onclick="closeAuthNoticeModalTemporarily()" aria-label="Close modal">✕</button>
-      <div class="modal-badge">
-        <span>🔒 Important Privacy & Security Update</span>
+<!-- ── Admin Control Center Modal Window ── -->
+<div id="admin-modal" class="modal-overlay" style="display: none; z-index: 9000; background: rgba(13, 17, 23, 0.85); backdrop-filter: blur(8px);">
+  <div class="admin-dialog" style="width: 90%; max-width: 1000px; max-height: 85vh; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 16px 40px rgba(0,0,0,0.6);">
+    
+    <!-- Admin Header -->
+    <div style="padding: 16px 24px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 1.3rem;">⚙️</span>
+        <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">Admin Control Center</h3>
       </div>
-      <h2 class="modal-title" id="auth-modal-title">Mandatory Authentication Notice</h2>
+      <button class="action-btn icon-only-btn" onclick="closeAdminPortal()" title="Close Admin Panel">✕</button>
     </div>
 
-    <div class="modal-body">
-      <div class="modal-section">
-        <div class="modal-icon-box">🛡️</div>
-        <div class="modal-section-content">
-          <h4>Why is this change happening?</h4>
-          <p>To enhance data privacy, safeguard booking records, and comply with security policies, access to this dashboard will soon require user login authentication.</p>
-        </div>
-      </div>
-
-      <div class="modal-section">
-        <div class="modal-icon-box">📅</div>
-        <div class="modal-section-content">
-          <h4>Enforcement Target Date</h4>
-          <p>Mandatory authentication will take effect on <span class="date-highlight">August 21, 2026</span>. Please prepare for this upcoming update.</p>
-        </div>
-      </div>
-
-      <div class="modal-section">
-        <div class="modal-icon-box">🔑</div>
-        <div class="modal-section-content">
-          <h4>Self-Registration Account Setup</h4>
-          <p>Starting August 21, a new Login & Registration screen will be activated. All team members can register their own accounts directly on first visit.</p>
-        </div>
-      </div>
+    <!-- Admin Navigation Tabs -->
+    <div class="tab-bar" style="padding: 12px 24px 0; background: var(--bg-secondary); border-bottom: 1px solid var(--border); margin: 0;">
+      <button class="tab-btn active" id="adm-tab-users" onclick="setAdminTab('users')">👥 Users & Approvals</button>
+      <button class="tab-btn"        id="adm-tab-bot"   onclick="setAdminTab('bot')">⚙️ Bot & Quiet Hours</button>
+      <button class="tab-btn"        id="adm-tab-tg"    onclick="setAdminTab('tg')">📡 Telegram Test</button>
+      <button class="tab-btn"        id="adm-tab-data"  onclick="setAdminTab('data')">💾 Data & Exports</button>
+      <button class="tab-btn"        id="adm-tab-telem" onclick="setAdminTab('telem')">📊 Diagnostics</button>
+      <button class="tab-btn"        id="adm-tab-audit" onclick="setAdminTab('audit')">📜 Audit Trail</button>
     </div>
 
-    <div class="modal-footer">
-      <span class="modal-footer-note">You can re-read this notice anytime via the header badge.</span>
-      <button class="modal-primary-btn" onclick="dismissAuthNoticeModal()">I Understand</button>
+    <!-- Admin Content Body -->
+    <div style="padding: 24px; overflow-y: auto; flex: 1;" id="admin-modal-body">
+      
+      <!-- TAB 1: USERS & APPROVALS -->
+      <div id="adm-panel-users">
+        
+        <!-- Pending Registrations Section -->
+        <div style="margin-bottom: 28px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+            <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--yellow);">⏳ Pending Registration Approvals</h4>
+            <span id="pending-users-count-badge" class="badge" style="background: var(--yellow-bg); color: var(--yellow);">0 Pending</span>
+          </div>
+
+          <table class="booking-table" style="width: 100%; font-size: 0.85rem; border: 1px solid rgba(210,153,34,0.3);">
+            <thead>
+              <tr style="background: var(--bg-primary); text-align: left;">
+                <th style="padding: 10px;">Email / Username</th>
+                <th style="padding: 10px;">Full Name</th>
+                <th style="padding: 10px;">Registered Date</th>
+                <th style="padding: 10px; text-align: right;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="adm-pending-users-tbody">
+              <tr><td colspan="4" style="padding: 16px; text-align: center; color: var(--text-muted);">No pending registration approvals.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Active Approved Users Section -->
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h4 style="font-size: 0.95rem; font-weight: 700;">✅ Active Approved Accounts</h4>
+            <button class="action-btn primary-action-btn" onclick="toggleAddUserForm()">+ Create New User</button>
+          </div>
+
+          <!-- Add User Form -->
+          <div id="add-user-form-card" style="display: none; background: var(--bg-primary); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm); margin-bottom: 20px;">
+            <h5 style="font-size: 0.9rem; margin-bottom: 12px;">Add Direct Approved Account</h5>
+            <form onsubmit="handleCreateUserSubmit(event)" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+              <input type="email" id="new-user-username" class="search-input-field" placeholder="Email Address" required style="padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary);">
+              <input type="text" id="new-user-display" class="search-input-field" placeholder="Display Name" style="padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary);">
+              <div style="position: relative;">
+                <input type="password" id="new-user-password" class="search-input-field" placeholder="Password" required style="width: 100%; padding: 8px 36px 8px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary);">
+                <button type="button" class="pwd-eye-btn" onclick="togglePasswordVisibility('new-user-password', this)" title="Show/Hide Password" style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--text-secondary);">👁️</button>
+              </div>
+              <select id="new-user-role" class="search-input-field" style="padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary);">
+                <option value="operator">Operator (View & Ack)</option>
+                <option value="admin">Administrator (Full Control)</option>
+              </select>
+              <div style="grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end;">
+                <button type="button" class="action-btn" onclick="toggleAddUserForm()">Cancel</button>
+                <button type="submit" class="action-btn primary-action-btn">Save Account</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Active Users Table -->
+          <table class="booking-table" style="width: 100%; font-size: 0.85rem;">
+            <thead>
+              <tr style="background: var(--bg-primary); text-align: left;">
+                <th style="padding: 10px;">Email / Username</th>
+                <th style="padding: 10px;">Display Name</th>
+                <th style="padding: 10px;">Role</th>
+                <th style="padding: 10px;">Created At</th>
+                <th style="padding: 10px; text-align: right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="adm-users-tbody">
+              <tr><td colspan="5" style="padding: 16px; text-align: center;">Loading users...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+
+      <!-- TAB 2: BOT CONTROL & QUIET HOURS -->
+      <div id="adm-panel-bot" style="display: none;">
+        <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 16px;">Automated Bot Loop Controls</h4>
+        
+        <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 18px; border-radius: var(--radius-sm); margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <strong style="font-size: 0.95rem; display: block; margin-bottom: 4px;">Pause Automated Monitoring Loop</strong>
+            <span style="font-size: 0.8rem; color: var(--text-secondary);">When paused, scheduled cron jobs will skip checking Google Sheets without throwing errors.</span>
+          </div>
+          <button id="bot-pause-toggle-btn" class="action-btn" onclick="toggleBotPauseState()" style="padding: 8px 18px; font-weight: 600;">
+            Pause Bot
+          </button>
+        </div>
+
+        <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 12px;">Quiet Hours Settings</h4>
+        <form onsubmit="handleQuietHoursSubmit(event)" style="background: var(--bg-primary); border: 1px solid var(--border); padding: 18px; border-radius: var(--radius-sm); display: grid; gap: 14px;">
+          <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+            <div>
+              <label style="display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">Quiet Hours Start (Hour 0-23 KL)</label>
+              <input type="number" min="0" max="23" id="qh-start" class="search-input-field" style="padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); width: 140px;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">Quiet Hours End (Hour 0-23 KL)</label>
+              <input type="number" min="0" max="23" id="qh-end" class="search-input-field" style="padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); width: 140px;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">Error Alert Snooze (Hours)</label>
+              <input type="number" min="1" max="48" id="qh-snooze" class="search-input-field" style="padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); width: 140px;">
+            </div>
+          </div>
+          <div style="display: flex; justify-content: flex-end;">
+            <button type="submit" class="action-btn primary-action-btn">Save Settings</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- TAB 3: TELEGRAM DIAGNOSTICS -->
+      <div id="adm-panel-tg" style="display: none;">
+        <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 12px;">Telegram Channel Connectivity Test</h4>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px;">Send a test ping message to your configured Telegram channels to verify bot delivery.</p>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;">
+          <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm);">
+            <strong style="display: block; font-size: 0.9rem; margin-bottom: 4px;">Main Alert Channel</strong>
+            <span style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 14px;">Instant change notification alerts</span>
+            <button class="action-btn" onclick="sendTelegramTestPing('main')" style="width: 100%; justify-content: center;">📡 Test Main Channel</button>
+          </div>
+          <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm);">
+            <strong style="display: block; font-size: 0.9rem; margin-bottom: 4px;">Report Channel</strong>
+            <span style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 14px;">10-Day customer check-in reports</span>
+            <button class="action-btn" onclick="sendTelegramTestPing('report')" style="width: 100%; justify-content: center;">📡 Test Report Channel</button>
+          </div>
+          <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm);">
+            <strong style="display: block; font-size: 0.9rem; margin-bottom: 4px;">Reminder Channel</strong>
+            <span style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 14px;">30-Day payment reminder alerts</span>
+            <button class="action-btn" onclick="sendTelegramTestPing('reminder')" style="width: 100%; justify-content: center;">📡 Test Reminder Channel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 4: DATA EXPORTS & BACKUPS -->
+      <div id="adm-panel-data" style="display: none;">
+        <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 16px;">1-Click System Data Backups & Reset</h4>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-bottom: 24px;">
+          <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm);">
+            <strong style="display: block; font-size: 0.9rem; margin-bottom: 6px;">Bookings Snapshot Data</strong>
+            <div style="display: flex; gap: 8px;">
+              <button class="action-btn" onclick="downloadExport('snapshot', 'json')" style="flex:1; justify-content:center;">JSON</button>
+              <button class="action-btn" onclick="downloadExport('snapshot', 'csv')" style="flex:1; justify-content:center;">CSV</button>
+            </div>
+          </div>
+
+          <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm);">
+            <strong style="display: block; font-size: 0.9rem; margin-bottom: 6px;">Change History Log</strong>
+            <div style="display: flex; gap: 8px;">
+              <button class="action-btn" onclick="downloadExport('history', 'json')" style="flex:1; justify-content:center;">JSON</button>
+              <button class="action-btn" onclick="downloadExport('history', 'csv')" style="flex:1; justify-content:center;">CSV</button>
+            </div>
+          </div>
+
+          <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm);">
+            <strong style="display: block; font-size: 0.9rem; margin-bottom: 6px;">Security Audit Logs</strong>
+            <div style="display: flex; gap: 8px;">
+              <button class="action-btn" onclick="downloadExport('audit', 'json')" style="flex:1; justify-content:center;">JSON</button>
+              <button class="action-btn" onclick="downloadExport('audit', 'csv')" style="flex:1; justify-content:center;">CSV</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="background: rgba(248,81,73,0.05); border: 1px solid rgba(248,81,73,0.3); padding: 18px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <strong style="font-size: 0.95rem; color: var(--red); display: block; margin-bottom: 4px;">Re-establish Baseline Snapshot</strong>
+            <span style="font-size: 0.8rem; color: var(--text-secondary);">Force re-fetch Google Sheet data and update baseline snapshot to clear past diff discrepancies.</span>
+          </div>
+          <button class="action-btn" onclick="triggerBaselineReset()" style="background: var(--red-bg); color: var(--red); border-color: rgba(248,81,73,0.3); font-weight: 600;">Reset Baseline</button>
+        </div>
+      </div>
+
+      <!-- TAB 5: DIAGNOSTICS & TELEMETRY -->
+      <div id="adm-panel-telem" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <h4 style="font-size: 1rem; font-weight: 600;">System Telemetry & Health Diagnostics</h4>
+          <button class="action-btn" onclick="loadTelemetryData()">↻ Refresh Diagnostics</button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;" id="telem-cards-grid">
+          <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 14px; border-radius: var(--radius-sm);">
+            <span style="font-size: 0.75rem; color: var(--text-secondary);">Process Uptime</span>
+            <div id="telem-uptime" style="font-size: 1.2rem; font-weight: 700; color: var(--accent);">—</div>
+          </div>
+          <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 14px; border-radius: var(--radius-sm);">
+            <span style="font-size: 0.75rem; color: var(--text-secondary);">Memory Heap Used</span>
+            <div id="telem-memory" style="font-size: 1.2rem; font-weight: 700; color: var(--green);">—</div>
+          </div>
+          <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 14px; border-radius: var(--radius-sm);">
+            <span style="font-size: 0.75rem; color: var(--text-secondary);">Google Sheets API Latency</span>
+            <div id="telem-sheets-ping" style="font-size: 1.2rem; font-weight: 700; color: var(--yellow);">—</div>
+          </div>
+          <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 14px; border-radius: var(--radius-sm);">
+            <span style="font-size: 0.75rem; color: var(--text-secondary);">Storage Connection</span>
+            <div id="telem-db-type" style="font-size: 1.2rem; font-weight: 700; color: var(--text-primary);">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 6: SECURITY AUDIT TRAIL -->
+      <div id="adm-panel-audit" style="display: none;">
+        <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 16px;">Security Audit Log</h4>
+        <table class="booking-table" style="width: 100%; font-size: 0.82rem;">
+          <thead>
+            <tr style="background: var(--bg-primary); text-align: left;">
+              <th style="padding: 10px;">Timestamp</th>
+              <th style="padding: 10px;">User</th>
+              <th style="padding: 10px;">Action</th>
+              <th style="padding: 10px;">IP</th>
+              <th style="padding: 10px;">Details</th>
+            </tr>
+          </thead>
+          <tbody id="adm-audit-tbody">
+            <tr><td colspan="5" style="padding: 16px; text-align: center;">Loading audit logs...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── Internal Notes Modal ── -->
+<div id="note-modal" class="modal-overlay" style="display: none; z-index: 9500; background: rgba(13, 17, 23, 0.85); backdrop-filter: blur(6px);">
+  <div style="width: 90%; max-width: 500px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px;">
+    <h4 style="font-size: 1rem; font-weight: 700; margin-bottom: 12px;">Add Internal Note</h4>
+    <input type="hidden" id="note-target-id">
+    <textarea id="note-content-input" rows="4" placeholder="Type internal staff note or remark..." style="width: 100%; padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-family: inherit; font-size: 0.85rem; outline: none; margin-bottom: 16px; resize: vertical;"></textarea>
+    <div style="display: flex; gap: 8px; justify-content: flex-end;">
+      <button class="action-btn" onclick="closeNoteModal()">Cancel</button>
+      <button class="action-btn primary-action-btn" onclick="submitInternalNote()">Save Note</button>
     </div>
   </div>
 </div>
