@@ -230,13 +230,14 @@ app.get('/api/in-house', requireAuth, async (req, res) => {
 
       if (isInHouse) {
         const rawCode = (codeIdx !== -1 && row[codeIdx]) ? row[codeIdx].toString().trim().toUpperCase() : '';
-        const codeKey = rawCode || `ROW_${i}`;
+        const rIndex = item.rowIndex !== undefined ? item.rowIndex : i;
+        const codeKey = rawCode ? `${rawCode}_${rIndex}` : `ROW_${rIndex}`;
 
         if (!bookingsByCode[codeKey]) {
           bookingsByCode[codeKey] = {
             code: rawCode,
             firstRow: row,
-            firstRowIndex: item.rowIndex !== undefined ? item.rowIndex : i,
+            firstRowIndex: rIndex,
             totalActivityPax: 0,
             roomPax: 0,
             isOverridden: !!item.isOverridden,
