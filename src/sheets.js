@@ -639,11 +639,14 @@ async function fetchAndEnrichSheetData() {
     const headerIndex = findHeaderRowIndex(rows);
     const headers = rows[headerIndex] || [];
 
-    const dataRows = rows.slice(headerIndex + 1);
+    const dataRows = rows.slice(headerIndex + 1).map((row, idx) => ({
+      row,
+      rowIndex: headerIndex + 1 + idx
+    }));
     const overriddenDataRows = await applyOverridesToRows(dataRows, headers);
 
     for (let i = 0; i < overriddenDataRows.length; i++) {
-      rows[headerIndex + 1 + i] = overriddenDataRows[i];
+      rows[headerIndex + 1 + i] = overriddenDataRows[i].row;
     }
   } catch (err) {
     console.warn('   ⚠️ Failed to apply admin overrides in fetchAndEnrichSheetData:', err.message);

@@ -54,7 +54,7 @@ async function getDb() {
     mongoClient = new MongoClient(process.env.MONGODB_URI);
     await mongoClient.connect();
     db = mongoClient.db();
-    console.log('   ✅ Connected to MongoDB successfully');
+    console.log('   ✅ Connected to MongoDB successfully snapshot 57');
     dbStatus = { connected: true, type: 'mongodb', error: null };
     
     // Create TTL Index for history collection - 14 days (1209600 seconds)

@@ -8,7 +8,7 @@ const { detectChanges } = require('./src/detector');
 const { sendTelegramAlert, isTelegramDisabled } = require('./src/telegram');
 const { loadSnapshot, saveSnapshot, appendHistory, clearMonthData } = require('./src/snapshot');
 const { checkAndSend30DayReminders } = require('./src/reminders');
-const { sendWeeklyReport, affectsReportWindow, getChangedDates, buildReport } = require('./src/weeklyReport');
+const { sendWeeklyReport, affectsReportWindow, getChangedDates, buildReport, formatDayMessage } = require('./src/weeklyReport');
 const { isQuietHours, isReportQuietHours } = require('./src/quietHours');
 const { getOrLoadConfig } = require('./src/adminController');
 
@@ -152,10 +152,23 @@ async function runCheck(forceReminders = false, isManual = false, isRetry = fals
       note: isInitialRun ? 'Bot initialized. Established baseline snapshot.' : undefined
     });
 
-    // 6. Check if report needs to be updated (sheet changes or date window shifted)
+    // 6. Check if report needs to be updated (sheet changes, override/content changes, date window shifted, or manual check)
     if (REPORT_CHAT_ID && !isInitialRun) {
       const hasChanges = (newRows.length > 0 || modifiedRows.length > 0);
       const reportData = buildReport(rows);
+
+      // Check if generated report content differs from what is currently on Telegram
+      let reportContentChanged = false;
+      const lastHashes = lastReportMessages?.dateHashes || {};
+      for (const day of reportData.days) {
+        const dayText = formatDayMessage(reportData, day);
+        const hash = crypto.createHash('md5').update(dayText).digest('hex');
+        if (lastHashes[day.dateStr] !== hash) {
+          reportContentChanged = true;
+          break;
+        }
+      }
+
       const currentDates = reportData.days.map(d => d.dateStr);
       const lastDates = Object.keys(lastReportMessages?.dateMessages || {});
       // Only check forward: are there new dates in the current window not in lastReportMessages?
@@ -169,19 +182,19 @@ async function runCheck(forceReminders = false, isManual = false, isRetry = fals
       const { isQuiet, klHour } = isReportQuietHours();
 
       if (isQuiet && !isManual) {
-        // If there's a reason to update, flag it so the next non-quiet run picks it up
-        if (datesShifted || (hasChanges && affectsReportWindow(newRows, modifiedRows))) {
+        // If there is a reason to update, flag it so the next non-quiet run picks it up
+        if (datesShifted || reportContentChanged || (hasChanges && affectsReportWindow(newRows, modifiedRows))) {
           pendingReportUpdate = true;
         }
         console.log(`   ℹ️ Skipping report update check during quiet hours (${klHour}:00 KL time).`);
-      } else if (pendingReportUpdate || datesShifted || (hasChanges && affectsReportWindow(newRows, modifiedRows))) {
+      } else if (isManual || pendingReportUpdate || datesShifted || reportContentChanged || (hasChanges && affectsReportWindow(newRows, modifiedRows))) {
         const nowMs = Date.now();
         const cooldownPassed = (nowMs - lastWeeklyReportTime > REPORT_COOLDOWN_MS);
 
-        if (pendingReportUpdate || datesShifted || cooldownPassed) {
+        if (isManual || pendingReportUpdate || datesShifted || reportContentChanged || cooldownPassed) {
           try {
             const changedDates = getChangedDates(newRows, modifiedRows);
-            console.log(`   📅 Updating report. Dates shifted: ${datesShifted}, Pending: ${pendingReportUpdate}, Changed dates: ${changedDates.join(', ')}`);
+            console.log(`   📅 Updating report. Manual: ${isManual}, ContentChanged: ${reportContentChanged}, Dates shifted: ${datesShifted}, Pending: ${pendingReportUpdate}, Changed dates: ${changedDates.join(', ')}`);
 
             const { messages } = await sendWeeklyReport(rows, REPORT_CHAT_ID, 'updated', lastReportMessages, changedDates);
             lastWeeklyReportTime = nowMs;
