@@ -562,6 +562,7 @@ function updateInHouseStats(targetDate) {
 
   const bookingsList = (allBookings && allBookings.length > 0) ? allBookings : currentBookings;
   const roomPaxIdx = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM_PAX');
+  const roomIdx = bookingsHeaders.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM');
   const checkInIdx = bookingsHeaders.findIndex(h => h && ['CHECK IN', 'CHECK-IN', 'CHECKIN'].includes(h.toString().trim().toUpperCase()));
   const checkOutIdx = bookingsHeaders.findIndex(h => h && ['CHECK OUT', 'CHECK-OUT', 'CHECKOUT'].includes(h.toString().trim().toUpperCase()));
   const remarkIdx = bookingsHeaders.findIndex(h => h && ['REMARK', 'REMARKS'].includes(h.toString().trim().toUpperCase()));
@@ -598,23 +599,32 @@ function updateInHouseStats(targetDate) {
     if (isInHouse) {
       const rawCode = (codeIdx !== -1 && rowData[codeIdx]) ? rowData[codeIdx].toString().trim().toUpperCase() : '';
       const rIndex = item.rowIndex !== undefined ? item.rowIndex : index;
-      const codeKey = rawCode ? `${rawCode}_${rIndex}` : `ROW_${rIndex}`;
+      const codeKey = rawCode ? rawCode : `ROW_${rIndex}`;
 
       if (!bookingsByCode[codeKey]) {
         bookingsByCode[codeKey] = {
           code: rawCode,
           totalActivityPax: 0,
-          roomPax: 0
+          roomsMap: {}
         };
       }
 
       bookingsByCode[codeKey].totalActivityPax = Math.max(bookingsByCode[codeKey].totalActivityPax, getRowActivityPaxClient(rowData));
 
-      if (roomPaxIdx !== -1 && rowData[roomPaxIdx] && rowData[roomPaxIdx] !== '—') {
-        const parsedPax = parsePaxString(rowData[roomPaxIdx].toString());
-        if (parsedPax > 0 && bookingsByCode[codeKey].roomPax === 0) {
-          bookingsByCode[codeKey].roomPax = parsedPax;
-        }
+      const roomStr = roomIdx !== -1 ? (rowData[roomIdx] || '') : '';
+      if (roomStr && roomStr !== '—') {
+        const cleanStr = roomStr.toString().replace(/➔/g, ',').replace(/\([^)]*changed[^)]*\)/gi, '');
+        const parts = cleanStr.split(',');
+        parts.forEach(part => {
+          const p = part.trim();
+          if (!p) return;
+          const match = p.match(/([A-Z0-9]+)\s*(?:\((\d+)\s*Pax\))?/i);
+          if (match) {
+            const roomName = match[1].toUpperCase();
+            const pax = match[2] ? parseInt(match[2], 10) : 1;
+            bookingsByCode[codeKey].roomsMap[roomName] = Math.max(bookingsByCode[codeKey].roomsMap[roomName] || 0, pax);
+          }
+        });
       }
     }
   });
@@ -627,10 +637,16 @@ function updateInHouseStats(targetDate) {
     totalBookingsInHouse++;
 
     let pax = 1;
-    if (group.roomPax > 0) {
-      pax = group.roomPax;
-    } else if (group.totalActivityPax > 0) {
+    if (group.totalActivityPax > 0) {
       pax = group.totalActivityPax;
+    } else {
+      let roomPaxSum = 0;
+      for (const rName in group.roomsMap) {
+        roomPaxSum += group.roomsMap[rName];
+      }
+      if (roomPaxSum > 0) {
+        pax = roomPaxSum;
+      }
     }
 
     totalPax += pax;
@@ -1169,20 +1185,18 @@ function buildBookingCard(booking, idx) {
   const rowColor = colorIndex !== -1 ? (rowData[colorIndex] || 'WHITE') : 'WHITE';
   const remarkVal = remarkIndex !== -1 ? (rowData[remarkIndex] || '') : (rowData[22] || '');
 
-  // Smart Pax & Room Change Calculation
+  // Smart Pax Calculation: Prioritize activity pax (snorkellers + divers + course)
   const actPax = getRowActivityPaxClient(rowData);
-  let cardPax = booking.pax;
+  let cardPax = actPax > 0 ? actPax : 0;
+  if (!cardPax && roomPaxIndex !== -1 && rowData[roomPaxIndex] && rowData[roomPaxIndex] !== '—') {
+    const parsed = parsePaxString(rowData[roomPaxIndex].toString());
+    cardPax = parsed > 0 ? parsed : 0;
+  }
+  if (!cardPax && booking.pax) {
+    cardPax = booking.pax;
+  }
   if (!cardPax) {
-    if (roomPaxIndex !== -1 && rowData[roomPaxIndex] && rowData[roomPaxIndex] !== '—') {
-      const parsed = parsePaxString(rowData[roomPaxIndex].toString());
-      cardPax = parsed > 0 ? parsed : 0;
-    }
-    if (!cardPax && actPax > 0) {
-      cardPax = actPax;
-    }
-    if (!cardPax) {
-      cardPax = 1;
-    }
+    cardPax = 1;
   }
 
   const roomInfo = parseRoomDetails(roomVal, actPax || cardPax);
@@ -1461,10 +1475,10 @@ function renderInHouseList(container, searchQuery, targetDateInput, badgeCountEl
   for (const key in bookingsByCode) {
     const group = bookingsByCode[key];
     let pax = 1;
-    if (group.roomPax > 0) {
-      pax = group.roomPax;
-    } else if (group.totalActivityPax > 0) {
+    if (group.totalActivityPax > 0) {
       pax = group.totalActivityPax;
+    } else if (group.roomPax > 0) {
+      pax = group.roomPax;
     }
 
     const rowData = group.row;

@@ -194,6 +194,8 @@ app.get('/api/in-house', requireAuth, async (req, res) => {
     const remarkIdx = headers.findIndex(h => h && ['REMARK', 'REMARKS'].includes(h.toString().trim().toUpperCase()));
     const codeIdx = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'CODE');
 
+    const roomIdx = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM');
+
     const bookingsByCode = {};
 
     const rawAllRows = snapshot.allRows || [];
@@ -231,7 +233,7 @@ app.get('/api/in-house', requireAuth, async (req, res) => {
       if (isInHouse) {
         const rawCode = (codeIdx !== -1 && row[codeIdx]) ? row[codeIdx].toString().trim().toUpperCase() : '';
         const rIndex = item.rowIndex !== undefined ? item.rowIndex : i;
-        const codeKey = rawCode ? `${rawCode}_${rIndex}` : `ROW_${rIndex}`;
+        const codeKey = rawCode ? rawCode : `ROW_${rIndex}`;
 
         if (!bookingsByCode[codeKey]) {
           bookingsByCode[codeKey] = {
@@ -239,7 +241,7 @@ app.get('/api/in-house', requireAuth, async (req, res) => {
             firstRow: row,
             firstRowIndex: rIndex,
             totalActivityPax: 0,
-            roomPax: 0,
+            roomsMap: {},
             isOverridden: !!item.isOverridden,
             overrideMeta: item.overrideMeta
           };
@@ -247,11 +249,20 @@ app.get('/api/in-house', requireAuth, async (req, res) => {
 
         bookingsByCode[codeKey].totalActivityPax = Math.max(bookingsByCode[codeKey].totalActivityPax, getRowActivityPax(row));
 
-        if (roomPaxIdx !== -1 && row[roomPaxIdx] && row[roomPaxIdx] !== '—') {
-          const parsedRoomPax = parsePaxString(row[roomPaxIdx].toString());
-          if (parsedRoomPax > 0 && bookingsByCode[codeKey].roomPax === 0) {
-            bookingsByCode[codeKey].roomPax = parsedRoomPax;
-          }
+        const roomStr = roomIdx !== -1 ? (row[roomIdx] || '') : '';
+        if (roomStr && roomStr !== '—') {
+          const cleanStr = roomStr.toString().replace(/➔/g, ',').replace(/\([^)]*changed[^)]*\)/gi, '');
+          const parts = cleanStr.split(',');
+          parts.forEach(part => {
+            const p = part.trim();
+            if (!p) return;
+            const match = p.match(/([A-Z0-9]+)\s*(?:\((\d+)\s*Pax\))?/i);
+            if (match) {
+              const roomName = match[1].toUpperCase();
+              const pax = match[2] ? parseInt(match[2], 10) : 1;
+              bookingsByCode[codeKey].roomsMap[roomName] = Math.max(bookingsByCode[codeKey].roomsMap[roomName] || 0, pax);
+            }
+          });
         }
       }
     }
@@ -263,10 +274,16 @@ app.get('/api/in-house', requireAuth, async (req, res) => {
       const group = bookingsByCode[key];
 
       let pax = 1;
-      if (group.roomPax > 0) {
-        pax = group.roomPax;
-      } else if (group.totalActivityPax > 0) {
+      if (group.totalActivityPax > 0) {
         pax = group.totalActivityPax;
+      } else {
+        let roomPaxSum = 0;
+        for (const rName in group.roomsMap) {
+          roomPaxSum += group.roomsMap[rName];
+        }
+        if (roomPaxSum > 0) {
+          pax = roomPaxSum;
+        }
       }
 
       totalGuests += pax;
