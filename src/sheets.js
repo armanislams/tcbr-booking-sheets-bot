@@ -291,9 +291,9 @@ function formatRoomDetailsWithDates(code, checkInVal, checkOutVal, roomMap) {
   }
 
   const ONE_DAY = 86400000;
-  // Window filter: only consider calendar dates within 2 days before check-in and 2 days after check-out
-  const minAllowedDate = new Date(rowCheckInDate.getTime() - 2 * ONE_DAY);
-  const maxAllowedDate = new Date(rowCheckOutDate.getTime() + 2 * ONE_DAY);
+  // Strict stay date bounds for this booking: rowCheckInDate <= dateObj < rowCheckOutDate
+  const minAllowedDate = new Date(rowCheckInDate.getTime());
+  const maxAllowedDate = new Date(rowCheckOutDate.getTime());
 
   // 1. Extract all room entries for this code across roomMap
   const roomDaysMap = {}; // { roomNumber: [ { dateObj, pax, dayStr } ] }
@@ -315,8 +315,8 @@ function formatRoomDetailsWithDates(code, checkInVal, checkOutVal, roomMap) {
       const dateObj = new Date(year, monthIndex, dayNum);
       dateObj.setHours(0, 0, 0, 0);
 
-      // Filter calendar dates relevant to this specific booking date range
-      if (dateObj < minAllowedDate || dateObj > maxAllowedDate) return;
+      // Only match calendar dates within this booking's actual stay window
+      if (dateObj < minAllowedDate || dateObj >= maxAllowedDate) return;
 
       const dayRooms = codeAlloc[dayStr] || {};
       Object.keys(dayRooms).forEach(roomNum => {
@@ -652,5 +652,5 @@ async function fetchAndEnrichSheetData() {
   return rows;
 }
 
-module.exports = { fetchSheetData, fetchRoomMap, enrichSheetRows, fetchAndEnrichSheetData };
+module.exports = { fetchSheetData, fetchRoomMap, enrichSheetRows, fetchAndEnrichSheetData, formatRoomDetailsWithDates };
 
