@@ -192,11 +192,17 @@ async function fetchRoomMap(monthsToFetch = []) {
 
     const dayNumbersRow = rows[roomTypeRowIndex + 1] || [];
     const colIndexToDay = {};
+    let lastDay = 0;
     for (let colIndex = 2; colIndex < dayNumbersRow.length; colIndex++) {
       const dayStr = (dayNumbersRow[colIndex] || '').toString().trim();
       const dayNum = parseInt(dayStr, 10);
       if (!isNaN(dayNum)) {
+        // Stop if we hit next month's overflow column (day resets to 1 after day 25+)
+        if (lastDay >= 25 && dayNum < 5) {
+          break;
+        }
         colIndexToDay[colIndex] = dayNum;
+        lastDay = dayNum;
       }
     }
 
@@ -284,6 +290,11 @@ function formatRoomDetailsWithDates(code, checkInVal, checkOutVal, roomMap) {
     rowCheckOutDate.setHours(0, 0, 0, 0);
   }
 
+  const ONE_DAY = 86400000;
+  // Window filter: only consider calendar dates within 2 days before check-in and 2 days after check-out
+  const minAllowedDate = new Date(rowCheckInDate.getTime() - 2 * ONE_DAY);
+  const maxAllowedDate = new Date(rowCheckOutDate.getTime() + 2 * ONE_DAY);
+
   // 1. Extract all room entries for this code across roomMap
   const roomDaysMap = {}; // { roomNumber: [ { dateObj, pax, dayStr } ] }
 
@@ -304,6 +315,9 @@ function formatRoomDetailsWithDates(code, checkInVal, checkOutVal, roomMap) {
       const dateObj = new Date(year, monthIndex, dayNum);
       dateObj.setHours(0, 0, 0, 0);
 
+      // Filter calendar dates relevant to this specific booking date range
+      if (dateObj < minAllowedDate || dateObj > maxAllowedDate) return;
+
       const dayRooms = codeAlloc[dayStr] || {};
       Object.keys(dayRooms).forEach(roomNum => {
         const pax = dayRooms[roomNum] || 1;
@@ -322,7 +336,6 @@ function formatRoomDetailsWithDates(code, checkInVal, checkOutVal, roomMap) {
 
   // 2. Build contiguous stay segments for each room
   const segments = [];
-  const ONE_DAY = 86400000;
 
   roomNumbers.forEach(roomNum => {
     const entries = roomDaysMap[roomNum].sort((a, b) => a.dateObj - b.dateObj);
