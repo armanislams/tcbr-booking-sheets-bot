@@ -69,7 +69,7 @@ app.get('/api/history', requireAuth, async (req, res) => {
 });
 
 // Health check / status info
-app.get('/api/status', requireAuth, async (req, res) => {
+app.get('/api/status', async (req, res) => {
   const history = await loadHistory();
   const totalChecks = await getTotalChecksCount();
   const botConfig = await admin.getOrLoadConfig();
