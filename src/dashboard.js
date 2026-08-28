@@ -368,6 +368,11 @@ app.get('/api/admin/audit-logs', requireAuth, requireAdmin, admin.getAuditLogsHa
 app.put('/api/admin/bookings/override', requireAuth, requireAdmin, admin.updateBookingOverride);
 app.delete('/api/admin/bookings/override', requireAuth, requireAdmin, admin.revertBookingOverride);
 
+// Admin Boat Transfer Report APIs
+app.post('/api/admin/reports/boat-transfer/preview', requireAuth, requireAdmin, admin.previewBoatTransferReport);
+app.post('/api/admin/reports/boat-transfer/send', requireAuth, requireAdmin, admin.sendBoatTransferReport);
+
+
 
 async function startDashboard(runCheckFn) {
   runCheckCallback = runCheckFn;

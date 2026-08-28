@@ -553,6 +553,127 @@ async function revertBookingOverride(req, res) {
   }
 }
 
+/**
+ * Preview custom date boat transfer report.
+ */
+async function previewBoatTransferReport(req, res) {
+  try {
+    const { startDate, endDate, filterType } = req.body;
+    const snapshot = await loadSnapshot();
+
+    let rawRows = snapshot?.allRows || [];
+    if (rawRows.length === 0) {
+      rawRows = await fetchAndEnrichSheetData();
+    }
+
+    const { applyOverridesToRows } = require('./overrides');
+    const { buildCustomDateReport, formatDayMessage } = require('./weeklyReport');
+
+    const headers = snapshot?.headers || (rawRows.length > 0 ? (rawRows[0].headers || rawRows[0]) : []);
+    const enrichedRows = await applyOverridesToRows(rawRows, headers);
+
+    const report = buildCustomDateReport(enrichedRows, {
+      startDateStr: startDate,
+      endDateStr: endDate,
+      filterType: filterType || 'both',
+      headers
+    });
+
+    const now = new Date();
+    const formattedMessages = report.days.map(day => {
+      const msgText = formatDayMessage(report, day);
+      const timeString = now.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kuala_Lumpur' });
+      const dateString = now.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', timeZone: 'Asia/Kuala_Lumpur' });
+      const fullText = `${msgText}\n\n<i>Last updated: ${timeString}, ${dateString}</i>`;
+      return {
+        dateStr: day.dateStr,
+        label: day.label,
+        messageText: fullText
+      };
+    });
+
+    res.json({
+      success: true,
+      report,
+      formattedMessages
+    });
+  } catch (err) {
+    console.error('   ❌ Error previewing boat transfer report:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/**
+ * Send custom date boat transfer report to Telegram channel.
+ */
+async function sendBoatTransferReport(req, res) {
+  try {
+    const { startDate, endDate, filterType } = req.body;
+    const targetChatId = process.env.TELEGRAM_REPORT_CHAT_ID || process.env.TELEGRAM_CHAT_ID;
+
+    if (!targetChatId) {
+      return res.status(400).json({ error: 'TELEGRAM_REPORT_CHAT_ID is not configured in environment!' });
+    }
+
+    const snapshot = await loadSnapshot();
+    let rawRows = snapshot?.allRows || [];
+    if (rawRows.length === 0) {
+      rawRows = await fetchAndEnrichSheetData();
+    }
+
+    const { applyOverridesToRows } = require('./overrides');
+    const { buildCustomDateReport, formatDayMessage } = require('./weeklyReport');
+
+    const headers = snapshot?.headers || (rawRows.length > 0 ? (rawRows[0].headers || rawRows[0]) : []);
+    const enrichedRows = await applyOverridesToRows(rawRows, headers);
+
+    const report = buildCustomDateReport(enrichedRows, {
+      startDateStr: startDate,
+      endDateStr: endDate,
+      filterType: filterType || 'both',
+      headers
+    });
+
+    const now = new Date();
+    const eventId = crypto.randomUUID();
+    let sentCount = 0;
+
+    for (const day of report.days) {
+      const msgText = formatDayMessage(report, day);
+      const timeString = now.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kuala_Lumpur' });
+      const dateString = now.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', timeZone: 'Asia/Kuala_Lumpur' });
+      const dayTextWithTimestamp = `${msgText}\n\n<i>Last updated: ${timeString}, ${dateString}</i>`;
+
+      const replyMarkup = {
+        inline_keyboard: [
+          [{ text: '✅ Verify', callback_data: `verify_report:${eventId}:${day.dateStr}` }]
+        ]
+      };
+
+      const msgId = await sendMessage(dayTextWithTimestamp, replyMarkup, targetChatId);
+      if (msgId) sentCount++;
+    }
+
+    await appendAuditLog({
+      action: 'BOAT_REPORT_SENT_TELEGRAM',
+      username: req.user.username,
+      role: req.user.role,
+      details: `Sent boat transfer report for ${startDate} to ${endDate} (${sentCount} date message(s) sent)`,
+      ip: req.ip
+    });
+
+    res.json({
+      success: true,
+      message: `Boat transfer report sent to Telegram (${sentCount} date message(s) delivered).`,
+      sentCount,
+      channelId: targetChatId
+    });
+  } catch (err) {
+    console.error('   ❌ Error sending boat transfer report to Telegram:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+
 module.exports = {
   getOrLoadConfig,
   getUsers,
@@ -570,6 +691,9 @@ module.exports = {
   fetchInternalNotes,
   getAuditLogsHandler,
   updateBookingOverride,
-  revertBookingOverride
+  revertBookingOverride,
+  previewBoatTransferReport,
+  sendBoatTransferReport
 };
+
 
