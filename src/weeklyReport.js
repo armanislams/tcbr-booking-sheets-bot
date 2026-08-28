@@ -44,8 +44,8 @@ function getKLDate(date) {
 function parsePax(str) {
   if (!str || typeof str !== 'string') return { a: 0, c: 0, b: 0 };
 
-  // 1. Remove the first set of parentheses (if any) to ignore its numeric data (e.g. dive counts)
-  let s = str.replace(/\([^)]*\)/, '').trim();
+  // 1. Remove parenthetical text (e.g. dive counts, age notes) to ignore its numeric data
+  let s = str.replace(/\([^)]*\)/g, '').trim();
   if (!s) return { a: 0, c: 0, b: 0 };
 
   let adults = 0;
@@ -159,9 +159,11 @@ function parseDivingPax(str) {
 function parseCoursePax(str) {
   if (!str || typeof str !== 'string') return { a: 0, c: 0, b: 0 };
   
+  // Clean up parenthetical text (e.g. "(12 years old)", "(5 Dives)", "(age 14)")
+  let s = str.replace(/\([^)]*\)/g, '').trim();
   // Clean up any extra dive count or free boat dive text
   // e.g. "+ 4 Dives", "Free 1 boat dive each", "free 1 boat dives"
-  let s = str.replace(/\+?\s*(?:free\s*)?\d+\s*(?:boat\s*)?dives?(?:\s*each)?/gi, '').trim();
+  s = s.replace(/\+?\s*(?:free\s*)?\d+\s*(?:boat\s*)?dives?(?:\s*each)?/gi, '').trim();
   if (!s) return { a: 0, c: 0, b: 0 };
 
   let total = 0;
@@ -695,7 +697,195 @@ function affectsReportWindow(newRows, modifiedRows) {
   return false;
 }
 
+/**
+ * Build custom date boat report from sheet rows.
+ * @param {Array[]} rows - Raw or enriched sheet rows.
+ * @param {Object} options - { startDateStr: 'YYYY-MM-DD', endDateStr: 'YYYY-MM-DD', filterType: 'both'|'checkin'|'checkout' }
+ * @returns {Object} { startDateStr, endDateStr, filterType, generatedAt, days: [...], summary: { totalCheckIns, totalCheckOuts, totalGuests, pax: { a, c, b } } }
+ */
+function buildCustomDateReport(rows, options = {}) {
+  const startDateStr = options.startDateStr || toKLDateString(new Date());
+  const endDateStr   = options.endDateStr || startDateStr;
+  const filterType   = options.filterType || 'both';
+
+  const startParsed = parseDate(startDateStr);
+  const endParsed   = parseDate(endDateStr);
+
+  const startKL = startParsed ? getKLDate(startParsed) : getKLDate(new Date());
+  const endKL   = endParsed ? getKLDate(endParsed) : startKL;
+
+  const startUtc = Date.UTC(startKL.year, startKL.month, startKL.day);
+  const endUtc   = Date.UTC(endKL.year, endKL.month, endKL.day);
+
+  let numDays = Math.max(1, Math.round((endUtc - startUtc) / (1000 * 60 * 60 * 24)) + 1);
+  if (numDays > 31) numDays = 31; // Cap range at 31 days max
+
+  const days = [];
+  for (let i = 0; i < numDays; i++) {
+    const d = new Date(startKL.year, startKL.month, startKL.day + i);
+    days.push({
+      label: formatDayLabel(d),
+      dateStr: toKLDateString(d),
+      checkIns: [],
+      checkOuts: [],
+    });
+  }
+
+  let headers = options.headers || [];
+  if (!headers || headers.length === 0) {
+    const headerIndex = findHeaderRowIndex(rows);
+    const item = rows[headerIndex];
+    headers = (item && Array.isArray(item.row)) ? (item.headers || item.row) : (item || []);
+  }
+
+  const firstItem = rows[0];
+  const firstRow = (firstItem && Array.isArray(firstItem.row)) ? firstItem.row : firstItem;
+  const startsWithHeader = Array.isArray(firstRow) && firstRow.some(c => typeof c === 'string' && c.trim().toUpperCase() === 'CODE');
+  const startIdx = startsWithHeader ? 1 : 0;
+
+  const codeIdx     = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'CODE');
+  const nameIdx     = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'NAME');
+  const checkInIdx  = headers.findIndex(h => h && ['CHECK IN', 'CHECK-IN', 'CHECKIN', 'CHECK IN DATE', 'CHECK-IN DATE'].includes(h.toString().trim().toUpperCase()));
+  const checkOutIdx = headers.findIndex(h => h && ['CHECK OUT', 'CHECK-OUT', 'CHECKOUT', 'CHECK OUT DATE', 'CHECK-OUT DATE'].includes(h.toString().trim().toUpperCase()));
+  const roomIdx     = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROOM');
+
+  let snorkelIdx = headers.findIndex(h => h && (h.toString().trim().toUpperCase() === 'SNORKELLING' || h.toString().trim().toUpperCase() === 'SNORKEL' || h.toString().toUpperCase().includes('SNORKEL')));
+  if (snorkelIdx === -1) snorkelIdx = 4;
+
+  let divingIdx = headers.findIndex(h => h && (h.toString().trim().toUpperCase() === 'DIVING' || h.toString().trim().toUpperCase() === 'DIVE' || h.toString().toUpperCase().includes('DIVE')));
+  if (divingIdx === -1) divingIdx = 5;
+
+  let courseIdx = headers.findIndex(h => h && (h.toString().trim().toUpperCase() === 'COURSE' || h.toString().toUpperCase().includes('COURSE')));
+  if (courseIdx === -1) courseIdx = 6;
+
+  const dayDateStrs = new Set(days.map(d => d.dateStr));
+
+  for (let i = startIdx; i < rows.length; i++) {
+    const item = rows[i];
+    const row = (item && Array.isArray(item.row)) ? item.row : item;
+
+    if (!row || !Array.isArray(row) || row.slice(0, -1).every(cell => !cell || cell.toString().trim() === '')) {
+      continue;
+    }
+
+
+    const colorIdx = headers.findIndex(h => h && h.toString().trim().toUpperCase() === 'ROW_COLOR');
+    const rowColor = colorIdx !== -1 ? (row[colorIdx] || 'WHITE') : 'WHITE';
+
+    const remarkIdx = headers.findIndex(h => h && ['REMARK', 'REMARKS'].includes(h.toString().trim().toUpperCase()));
+    const remarkVal = remarkIdx !== -1 ? (row[remarkIdx] || '') : '';
+
+    if (rowColor === 'WHITE') {
+      const lowerRemark = remarkVal.toLowerCase();
+      const isSpecialRemark = lowerRemark.includes('cancel') || lowerRemark.includes('cancle') || lowerRemark.includes('cancled') || lowerRemark.includes('cancelled') ||
+                             lowerRemark.includes('postpone') || lowerRemark.includes('postponed') ||
+                             lowerRemark.includes('change') || lowerRemark.includes('changed') || lowerRemark.includes('chage') || lowerRemark.includes('chaged') ||
+                             lowerRemark.includes('double') || lowerRemark.includes('dup');
+      const isHistorical = lowerRemark.includes('previously') || lowerRemark.includes('prev');
+      if (isSpecialRemark && !isHistorical) continue;
+    }
+
+    try {
+      const code  = codeIdx !== -1 ? (row[codeIdx] || '').toString().trim() : '';
+      const name  = nameIdx !== -1 ? (row[nameIdx] || '').toString().trim() : '';
+      const room  = roomIdx !== -1 ? (row[roomIdx] || '').toString().trim() : '';
+
+      const checkInRaw  = checkInIdx  !== -1 ? (row[checkInIdx]  || '').toString().trim() : '';
+      const checkOutRaw = checkOutIdx !== -1 ? (row[checkOutIdx] || '').toString().trim() : '';
+
+      const checkInDate  = parseDate(checkInRaw);
+      const checkOutDate = parseDate(checkOutRaw);
+
+      if (!code && !name && !checkInDate && !checkOutDate) continue;
+
+      const snorkelStr = snorkelIdx !== -1 ? (row[snorkelIdx] || '').toString().trim() : '';
+      const divingStr  = divingIdx  !== -1 ? (row[divingIdx]  || '').toString().trim() : '';
+      const courseStr  = courseIdx  !== -1 ? (row[courseIdx]  || '').toString().trim() : '';
+
+      const snorkel = parsePax(snorkelStr);
+      const diving  = parseDivingPax(divingStr);
+      const course  = parseCoursePax(courseStr);
+
+      const pax = {
+        a: snorkel.a + diving.a + course.a,
+        c: snorkel.c + diving.c + course.c,
+        b: snorkel.b + diving.b + course.b,
+      };
+
+      const customer = {
+        rowIndex: item.rowIndex !== undefined ? item.rowIndex : i,
+        code,
+        name,
+        room,
+        pax,
+        snorkel,
+        diving,
+        course,
+        snorkelStr,
+        divingStr,
+        courseStr,
+        isOverridden: !!item.isOverridden
+      };
+
+      if ((filterType === 'both' || filterType === 'checkin') && checkInDate) {
+        const key = toKLDateString(checkInDate);
+        if (dayDateStrs.has(key)) {
+          const bucket = days.find(d => d.dateStr === key);
+          if (bucket) bucket.checkIns.push(customer);
+        }
+      }
+
+      if ((filterType === 'both' || filterType === 'checkout') && checkOutDate) {
+        const key = toKLDateString(checkOutDate);
+        if (dayDateStrs.has(key)) {
+          const bucket = days.find(d => d.dateStr === key);
+          if (bucket) bucket.checkOuts.push(customer);
+        }
+      }
+    } catch (err) {
+      console.warn(`   ⚠️ Skipping row ${i} in custom boat report:`, err.message);
+    }
+  }
+
+  let totalCheckIns = 0;
+  let totalCheckOuts = 0;
+  let totalPax = { a: 0, c: 0, b: 0 };
+
+  for (const day of days) {
+    totalCheckIns += day.checkIns.length;
+    totalCheckOuts += day.checkOuts.length;
+    for (const c of day.checkIns) totalPax = addPax(totalPax, c.pax);
+    for (const c of day.checkOuts) totalPax = addPax(totalPax, c.pax);
+  }
+
+  const now = new Date();
+  const generatedAt = now.toLocaleString('en-US', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: KL_TIMEZONE,
+  });
+
+  return {
+    startDateStr,
+    endDateStr,
+    filterType,
+    generatedAt,
+    days,
+    summary: {
+      totalCheckIns,
+      totalCheckOuts,
+      totalGuests: totalPax.a + totalPax.c + totalPax.b,
+      totalPax
+    }
+  };
+}
+
 module.exports = {
+
   parsePax,
   parseDivingPax,
   parseCoursePax,
@@ -709,4 +899,6 @@ module.exports = {
   affectsReportWindow,
   getChangedDates,
   escapeHtml,
+  buildCustomDateReport,
 };
+
