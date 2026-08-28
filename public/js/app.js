@@ -532,7 +532,8 @@ function parseDivingPaxClient(str) {
 
 function parseCoursePaxClient(str) {
   if (!str || typeof str !== 'string') return 0;
-  let s = str.replace(/\+?\s*(?:free\s*)?\d+\s*(?:boat\s*)?dives?(?:\s*each)?/gi, '').trim();
+  let s = str.replace(/\([^)]*\)/g, '').trim();
+  s = s.replace(/\+?\s*(?:free\s*)?\d+\s*(?:boat\s*)?dives?(?:\s*each)?/gi, '').trim();
   if (!s) return 0;
   let total = 0;
   const matches = s.match(/\d+\s*[A-Za-z][A-Za-z-]*/g);
@@ -1831,7 +1832,7 @@ function closeAdminPortal() {
 }
 
 function setAdminTab(tabName) {
-  const tabs = ['users', 'bot', 'tg', 'data', 'telem', 'audit'];
+  const tabs = ['users', 'bot', 'tg', 'data', 'telem', 'audit', 'boat'];
   tabs.forEach(t => {
     const btn = document.getElementById(`adm-tab-${t}`);
     const panel = document.getElementById(`adm-panel-${t}`);
@@ -1843,7 +1844,9 @@ function setAdminTab(tabName) {
   else if (tabName === 'bot') loadBotSettingsUI();
   else if (tabName === 'telem') loadTelemetryData();
   else if (tabName === 'audit') loadAuditLogsUI();
+  else if (tabName === 'boat') initBoatReportUI();
 }
+
 
 // ── Admin: User Management ──
 async function loadAdminUsers() {
@@ -2449,3 +2452,268 @@ async function revertBookingOverrideDirect(key, rowIndex, event) {
     }
   }
 }
+
+// ── Admin: Boat Transfer Report Generator ──
+
+function initBoatReportUI() {
+  const startInput = document.getElementById('boat-start-date');
+  const endInput = document.getElementById('boat-end-date');
+
+  if (startInput && !startInput.value) {
+    const todayStr = new Date().toISOString().split('T')[0];
+    startInput.value = todayStr;
+    if (endInput && !endInput.value) {
+      endInput.value = todayStr;
+    }
+    fetchBoatReportPreview();
+  }
+}
+
+function applyBoatReportPreset(preset) {
+  const startInput = document.getElementById('boat-start-date');
+  const endInput = document.getElementById('boat-end-date');
+  if (!startInput || !endInput) return;
+
+  const today = new Date();
+  const formatDate = (d) => d.toISOString().split('T')[0];
+
+  if (preset === 'today') {
+    startInput.value = formatDate(today);
+    endInput.value = formatDate(today);
+  } else if (preset === 'tomorrow') {
+    const tom = new Date(today);
+    tom.setDate(today.getDate() + 1);
+    startInput.value = formatDate(tom);
+    endInput.value = formatDate(tom);
+  } else if (preset === 'next3') {
+    const end = new Date(today);
+    end.setDate(today.getDate() + 2);
+    startInput.value = formatDate(today);
+    endInput.value = formatDate(end);
+  } else if (preset === 'next7') {
+    const end = new Date(today);
+    end.setDate(today.getDate() + 6);
+    startInput.value = formatDate(today);
+    endInput.value = formatDate(end);
+  }
+
+  fetchBoatReportPreview();
+}
+
+function formatPaxObj(p) {
+  if (!p) return '0';
+  const parts = [];
+  if (p.a > 0) parts.push(`${p.a}A`);
+  if (p.c > 0) parts.push(`${p.c}C`);
+  if (p.b > 0) parts.push(`${p.b}B`);
+  return parts.length > 0 ? parts.join(' ') : '0';
+}
+
+async function fetchBoatReportPreview() {
+  const container = document.getElementById('boat-report-preview-container');
+  const startInput = document.getElementById('boat-start-date');
+  const endInput = document.getElementById('boat-end-date');
+  const filterInput = document.getElementById('boat-filter-type');
+
+  if (!container) return;
+
+  const startDate = startInput?.value || new Date().toISOString().split('T')[0];
+  const endDate = endInput?.value || startDate;
+  const filterType = filterInput?.value || 'both';
+
+  container.innerHTML = `
+    <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+      <div class="spinner" style="margin: 0 auto 12px;"></div>
+      Generating boat transfer report preview for ${startDate} to ${endDate}...
+    </div>
+  `;
+
+  try {
+    const res = await authFetch('/api/admin/reports/boat-transfer/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ startDate, endDate, filterType })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to generate report preview');
+    }
+
+    const { report, formattedMessages } = data;
+    const { summary, days } = report;
+
+    // Build Summary Cards HTML
+    let html = `
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px;">
+        <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 14px; border-radius: var(--radius-sm);">
+          <span style="font-size: 0.75rem; color: var(--text-secondary);">Total Check-Ins</span>
+          <div style="font-size: 1.4rem; font-weight: 700; color: var(--green); margin-top: 2px;">${summary.totalCheckIns}</div>
+        </div>
+        <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 14px; border-radius: var(--radius-sm);">
+          <span style="font-size: 0.75rem; color: var(--text-secondary);">Total Check-Outs</span>
+          <div style="font-size: 1.4rem; font-weight: 700; color: var(--accent); margin-top: 2px;">${summary.totalCheckOuts}</div>
+        </div>
+        <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 14px; border-radius: var(--radius-sm);">
+          <span style="font-size: 0.75rem; color: var(--text-secondary);">Total Passengers</span>
+          <div style="font-size: 1.4rem; font-weight: 700; color: var(--yellow); margin-top: 2px;">${summary.totalGuests} Guests</div>
+        </div>
+        <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 14px; border-radius: var(--radius-sm);">
+          <span style="font-size: 0.75rem; color: var(--text-secondary);">Pax Breakdown</span>
+          <div style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary); margin-top: 4px;">
+            ${formatPaxObj(summary.totalPax)}
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Render Each Day Manifest & Telegram Preview
+    days.forEach((day, index) => {
+      const msgItem = formattedMessages[index] || {};
+      
+      html += `
+        <div style="background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 24px; overflow: hidden;">
+          <div style="padding: 12px 18px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+            <strong style="font-size: 0.95rem; color: var(--text-primary);">📅 ${escapeHtml(day.label)} (${day.dateStr})</strong>
+            <span class="badge" style="background: var(--accent-glow); color: var(--accent);">
+              In: ${day.checkIns.length} | Out: ${day.checkOuts.length}
+            </span>
+          </div>
+
+          <div style="padding: 18px;">
+            <!-- Check-Outs Section -->
+            ${(filterType === 'both' || filterType === 'checkout') ? `
+              <div style="margin-bottom: 18px;">
+                <h5 style="font-size: 0.88rem; color: var(--accent); margin-bottom: 8px; font-weight: 600;">
+                  📤 Check-Out 08:30am (${day.checkOuts.length} bookings)
+                </h5>
+                ${day.checkOuts.length === 0 ? `
+                  <div style="font-size: 0.8rem; color: var(--text-muted); padding: 8px 12px; background: var(--bg-card); border-radius: 4px;">No check-outs for this date.</div>
+                ` : `
+                  <table class="booking-table" style="width: 100%; font-size: 0.82rem;">
+                    <thead>
+                      <tr style="background: var(--bg-card); text-align: left;">
+                        <th style="padding: 8px 10px;">Booking Code</th>
+                        <th style="padding: 8px 10px;">Guest Name</th>
+                        <th style="padding: 8px 10px;">Room</th>
+                        <th style="padding: 8px 10px;">Pax</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${day.checkOuts.map(c => `
+                        <tr>
+                          <td style="padding: 8px 10px;"><code>${escapeHtml(c.code || '—')}</code></td>
+                          <td style="padding: 8px 10px;"><strong>${escapeHtml(c.name || '—')}</strong></td>
+                          <td style="padding: 8px 10px;">${escapeHtml(c.room || '—')}</td>
+                          <td style="padding: 8px 10px;">${formatPaxObj(c.pax)}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                `}
+              </div>
+            ` : ''}
+
+            <!-- Check-Ins Section -->
+            ${(filterType === 'both' || filterType === 'checkin') ? `
+              <div style="margin-bottom: 18px;">
+                <h5 style="font-size: 0.88rem; color: var(--green); margin-bottom: 8px; font-weight: 600;">
+                  📥 Check-In 10:30am (${day.checkIns.length} bookings)
+                </h5>
+                ${day.checkIns.length === 0 ? `
+                  <div style="font-size: 0.8rem; color: var(--text-muted); padding: 8px 12px; background: var(--bg-card); border-radius: 4px;">No check-ins for this date.</div>
+                ` : `
+                  <table class="booking-table" style="width: 100%; font-size: 0.82rem;">
+                    <thead>
+                      <tr style="background: var(--bg-card); text-align: left;">
+                        <th style="padding: 8px 10px;">Booking Code</th>
+                        <th style="padding: 8px 10px;">Guest Name</th>
+                        <th style="padding: 8px 10px;">Room</th>
+                        <th style="padding: 8px 10px;">Pax</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${day.checkIns.map(c => `
+                        <tr>
+                          <td style="padding: 8px 10px;"><code>${escapeHtml(c.code || '—')}</code></td>
+                          <td style="padding: 8px 10px;"><strong>${escapeHtml(c.name || '—')}</strong></td>
+                          <td style="padding: 8px 10px;">${escapeHtml(c.room || '—')}</td>
+                          <td style="padding: 8px 10px;">${formatPaxObj(c.pax)}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                `}
+              </div>
+            ` : ''}
+
+            <!-- Telegram Message Preview Box -->
+            <div style="margin-top: 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span style="font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);">📱 Telegram Channel Output Preview</span>
+                <button type="button" class="action-btn" onclick="copyTextToClipboard(\`${escapeHtml(msgItem.messageText || '')}\`, 'Copied Telegram message text!')" style="padding: 2px 8px; font-size: 0.72rem;">📋 Copy Text</button>
+              </div>
+              <pre style="background: #0d1117; color: #e6edf3; padding: 12px; border-radius: 6px; border: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; white-space: pre-wrap; word-break: break-word; margin: 0;">${escapeHtml(msgItem.messageText || '')}</pre>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    container.innerHTML = html;
+  } catch (err) {
+    console.error('❌ Error fetching boat report preview:', err);
+    container.innerHTML = `
+      <div style="background: var(--red-bg); color: var(--red); border: 1px solid rgba(248,81,73,0.3); padding: 16px; border-radius: var(--radius-sm); font-size: 0.85rem;">
+        ❌ Failed to load boat transfer report preview: ${escapeHtml(err.message)}
+      </div>
+    `;
+  }
+}
+
+async function sendBoatReportToTelegram() {
+  const startInput = document.getElementById('boat-start-date');
+  const endInput = document.getElementById('boat-end-date');
+  const filterInput = document.getElementById('boat-filter-type');
+  const sendBtn = document.getElementById('send-boat-tg-btn');
+
+  const startDate = startInput?.value || new Date().toISOString().split('T')[0];
+  const endDate = endInput?.value || startDate;
+  const filterType = filterInput?.value || 'both';
+
+  const rangeLabel = startDate === endDate ? startDate : `${startDate} to ${endDate}`;
+  if (!confirm(`Are you sure you want to send separate Boat Transfer Report message(s) for ${rangeLabel} to the Telegram Boat Transfer Channel?`)) {
+    return;
+  }
+
+  if (sendBtn) {
+    sendBtn.disabled = true;
+    sendBtn.textContent = '⏳ Sending...';
+  }
+
+  try {
+    const res = await authFetch('/api/admin/reports/boat-transfer/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ startDate, endDate, filterType })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to send boat report to Telegram.');
+    }
+
+    showToast(`✅ Boat transfer report sent to Telegram! (${data.sentCount} message(s) delivered)`);
+    alert(`✅ Success!\nBoat transfer report for ${rangeLabel} was posted to the Telegram boat transfer channel (${data.sentCount} message(s) sent).`);
+  } catch (err) {
+    console.error('❌ Error sending boat report to Telegram:', err);
+    showToast(`❌ Error sending report: ${err.message}`);
+    alert(`❌ Failed to send boat report to Telegram: ${err.message}`);
+  } finally {
+    if (sendBtn) {
+      sendBtn.disabled = false;
+      sendBtn.textContent = '📡 Send to TG';
+    }
+  }
+}
+
