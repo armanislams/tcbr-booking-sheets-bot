@@ -140,14 +140,17 @@ function rowKey(row, rowIndex) {
  * Typically the row that contains critical column identifiers like 'CODE'.
  */
 function findHeaderRowIndex(rows) {
+  if (!rows || !Array.isArray(rows)) return 0;
   for (let i = 0; i < Math.min(rows.length, 10); i++) {
-    const row = rows[i];
-    if (row && row.some(cell => typeof cell === 'string' && cell.trim() === 'CODE')) {
+    const item = rows[i];
+    const row = (item && Array.isArray(item.row)) ? item.row : item;
+    if (row && Array.isArray(row) && row.some(cell => typeof cell === 'string' && cell.trim().toUpperCase() === 'CODE')) {
       return i;
     }
   }
   return 0; // Default to row 0 if not found
 }
+
 
 /**
  * Build a map of { rowKey -> { row, checkIn, checkOut, rowIndex } }
