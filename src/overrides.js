@@ -15,9 +15,9 @@ const CACHE_TTL = 300000; // 5 minutes cache
  * Load all active booking overrides.
  * Returns an object map: { [bookingKey]: overrideDataObject }
  */
-async function loadOverrides() {
+async function loadOverrides(force = false) {
   const now = Date.now();
-  if (cachedOverrides && (now - lastOverridesLoadTime < CACHE_TTL)) {
+  if (!force && cachedOverrides && (now - lastOverridesLoadTime < CACHE_TTL)) {
     return cachedOverrides;
   }
 
@@ -59,7 +59,7 @@ async function loadOverrides() {
 async function saveOverride(bookingKey, overrideData, updatedBy) {
   if (!bookingKey) throw new Error('Booking key is required');
 
-  const overrides = await loadOverrides();
+  const overrides = await loadOverrides(true);
   const payload = {
     ...overrideData,
     isOverridden: true,
@@ -80,13 +80,17 @@ async function saveOverride(bookingKey, overrideData, updatedBy) {
         { $set: { bookingKey, ...payload } },
         { upsert: true }
       );
-      return payload;
     } catch (err) {
       console.error('   ❌ MongoDB saveOverride error:', err.message);
     }
   }
 
-  fs.writeFileSync(OVERRIDES_FILE, JSON.stringify(overrides, null, 2), 'utf-8');
+  try {
+    fs.writeFileSync(OVERRIDES_FILE, JSON.stringify(overrides, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('   ❌ File saveOverride error:', err.message);
+  }
+
   return payload;
 }
 
@@ -95,8 +99,7 @@ async function saveOverride(bookingKey, overrideData, updatedBy) {
  * Supports search by key, ROW_rowIndex, or legacy keys.
  */
 async function deleteOverride(bookingKey, rowIndex) {
-  const overrides = await loadOverrides();
-  if (!overrides || Object.keys(overrides).length === 0) return false;
+  const overrides = await loadOverrides(true);
 
   let targetKey = null;
 
@@ -114,20 +117,21 @@ async function deleteOverride(bookingKey, rowIndex) {
   }
 
   // 1. Direct match by bookingKey
-  if (bookingKey && overrides[bookingKey]) {
+  if (bookingKey && overrides && overrides[bookingKey]) {
     targetKey = bookingKey;
   }
   // 2. Direct match by ROW_rowIndex
-  else if (parsedRowIndex !== undefined && parsedRowIndex !== null && !isNaN(parsedRowIndex) && overrides[`ROW_${parsedRowIndex}`]) {
+  else if (parsedRowIndex !== undefined && parsedRowIndex !== null && !isNaN(parsedRowIndex) && overrides && overrides[`ROW_${parsedRowIndex}`]) {
     targetKey = `ROW_${parsedRowIndex}`;
   }
   // 3. Fallback search across overrides map
-  else {
+  else if (overrides) {
     for (const k in overrides) {
       if (
         k === bookingKey ||
         (parsedRowIndex !== undefined && !isNaN(parsedRowIndex) && (k === `ROW_${parsedRowIndex}` || k.endsWith(`_ROW_${parsedRowIndex}`))) ||
-        (bookingKey && overrides[k]?.fields?.CODE === bookingKey)
+        (bookingKey && overrides[k]?.fields?.CODE === bookingKey) ||
+        (bookingKey && k.includes(bookingKey))
       ) {
         targetKey = k;
         break;
@@ -136,38 +140,51 @@ async function deleteOverride(bookingKey, rowIndex) {
   }
 
   // 4. Fallback if single override exists
-  if (!targetKey && bookingKey) {
+  if (!targetKey && bookingKey && overrides) {
     const keys = Object.keys(overrides);
     if (keys.length === 1) {
       targetKey = keys[0];
     }
   }
 
-  if (!targetKey) return false;
+  let removed = false;
 
-  delete overrides[targetKey];
-  cachedOverrides = overrides;
-  lastOverridesLoadTime = Date.now();
+  if (targetKey && overrides) {
+    delete overrides[targetKey];
+    try {
+      fs.writeFileSync(OVERRIDES_FILE, JSON.stringify(overrides, null, 2), 'utf-8');
+    } catch (err) {
+      console.error('   ❌ File deleteOverride error:', err.message);
+    }
+    removed = true;
+  }
 
   const db = await getDb();
   if (db) {
     try {
       const collection = db.collection('booking_overrides');
-      const deleteConditions = [{ bookingKey: targetKey }];
+      const deleteConditions = [];
+      if (targetKey) deleteConditions.push({ bookingKey: targetKey });
       if (bookingKey) deleteConditions.push({ bookingKey });
       if (parsedRowIndex !== undefined && !isNaN(parsedRowIndex)) {
         deleteConditions.push({ bookingKey: `ROW_${parsedRowIndex}` });
       }
-      await collection.deleteMany({
-        $or: deleteConditions
-      });
+      if (deleteConditions.length > 0) {
+        const dbRes = await collection.deleteMany({ $or: deleteConditions });
+        if (dbRes.deletedCount > 0) {
+          removed = true;
+        }
+      }
     } catch (err) {
       console.error('   ❌ MongoDB deleteOverride error:', err.message);
     }
   }
 
-  fs.writeFileSync(OVERRIDES_FILE, JSON.stringify(overrides, null, 2), 'utf-8');
-  return true;
+  // Reset in-memory cache to ensure fresh state on next read
+  cachedOverrides = null;
+  lastOverridesLoadTime = 0;
+
+  return removed;
 }
 
 const HEADER_ALIASES = {
