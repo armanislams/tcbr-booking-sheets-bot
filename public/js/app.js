@@ -200,11 +200,12 @@ async function loadData(forceRefresh = false) {
   if (btn) btn.classList.add('spinning');
 
   try {
+    const ts = forceRefresh ? `?_t=${Date.now()}` : '';
     const [historyRes, statusRes, currentBookingsRes, allBookingsRes] = await Promise.all([
-      authFetch('/api/history'),
-      authFetch('/api/status'),
-      authFetch('/api/current-bookings'),
-      authFetch('/api/all-bookings'),
+      authFetch(`/api/history${ts}`),
+      authFetch(`/api/status${ts}`),
+      authFetch(`/api/current-bookings${ts}`),
+      authFetch(`/api/all-bookings${ts}`),
     ]);
 
     const history = await historyRes.json();
