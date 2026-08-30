@@ -2459,7 +2459,9 @@ async function saveBookingEdit(event) {
 
 async function revertBookingEdit() {
   const key = document.getElementById('edit-booking-key').value;
-  if (!key) return;
+  const rowIndexVal = document.getElementById('edit-booking-row-index').value;
+  const rowIndex = parseInt(rowIndexVal, 10);
+  if (!key && isNaN(rowIndex)) return;
 
   if (!confirm('Are you sure you want to revert this booking back to original Google Sheet values?')) {
     return;
@@ -2469,7 +2471,7 @@ async function revertBookingEdit() {
     const res = await authFetch('/api/admin/bookings/override', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bookingKey: key })
+      body: JSON.stringify({ bookingKey: key, rowIndex: !isNaN(rowIndex) ? rowIndex : undefined })
     });
 
     const data = await res.json();
