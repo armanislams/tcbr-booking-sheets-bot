@@ -616,24 +616,42 @@ async function getNotes() {
 }
 
 // ─── Bot Dynamic Configuration Persistence ──────────────────────────────────
+const DEFAULT_CONFIG = {
+  isPaused: false,
+  quietHoursStart: 23,
+  quietHoursEnd: 7,
+  snoozeHours: parseInt(process.env.ERROR_ALERT_SNOOZE_HOURS || '6', 10),
+  resortName: 'Tenggol Coral Beach Resort',
+  resortTagline: 'TCBR Booking Blatform',
+  logoUrl: '/tcb-logo.png',
+  primaryColor: '#58a6ff',
+  brandAccent: '#2ea043',
+  jettyName: "A'king Jetty",
+  jettyMapUrl: 'https://maps.app.goo.gl/VQwW3qZxqb4qGd2e9',
+  assemblyTime: '09:30 AM',
+  departureTime: '10:30 AM',
+  contactPhone: '+60 12-345 6789'
+};
+
 async function loadBotConfig() {
   const db = await getDb();
   if (db) {
     try {
       const doc = await db.collection('config').findOne({ _id: 'bot_settings' });
-      if (doc) return doc.config;
+      if (doc && doc.config) return { ...DEFAULT_CONFIG, ...doc.config };
     } catch (err) {
       console.error('   ❌ MongoDB loadBotConfig error:', err.message);
     }
   }
 
   if (!fs.existsSync(CONFIG_FILE)) {
-    return { isPaused: false, quietHoursStart: 23, quietHoursEnd: 7, snoozeHours: parseInt(process.env.ERROR_ALERT_SNOOZE_HOURS || '6', 10) };
+    return { ...DEFAULT_CONFIG };
   }
   try {
-    return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+    const fileData = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+    return { ...DEFAULT_CONFIG, ...fileData };
   } catch {
-    return { isPaused: false, quietHoursStart: 23, quietHoursEnd: 7, snoozeHours: parseInt(process.env.ERROR_ALERT_SNOOZE_HOURS || '6', 10) };
+    return { ...DEFAULT_CONFIG };
   }
 }
 

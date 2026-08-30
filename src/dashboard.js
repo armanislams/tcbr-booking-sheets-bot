@@ -355,6 +355,30 @@ app.post('/api/admin/users', requireAuth, requireAdmin, admin.createUser);
 app.post('/api/admin/users/:userId/approve', requireAuth, requireAdmin, admin.approveUser);
 app.delete('/api/admin/users/:userId', requireAuth, requireAdmin, admin.deleteUser);
 
+app.get('/manifest.json', async (req, res) => {
+  try {
+    const { loadBotConfig } = require('./snapshot');
+    const config = await loadBotConfig();
+    const resortName = config?.resortName || 'TCBR Booking';
+    res.json({
+      short_name: 'TCBR Booking',
+      name: resortName.includes('TCBR Booking') ? resortName : `${resortName} — TCBR Booking`,
+      icons: [
+        { src: '/icon-192.png', type: 'image/png', sizes: '192x192' },
+        { src: '/icon-512.png', type: 'image/png', sizes: '512x512' }
+      ],
+      start_url: '/',
+      background_color: '#0d1117',
+      theme_color: '#161b22',
+      display: 'standalone',
+      orientation: 'portrait'
+    });
+  } catch {
+    res.sendFile(path.join(__dirname, '..', 'public', 'manifest.json'));
+  }
+});
+
+app.get('/api/public/branding', admin.getPublicBranding);
 app.get('/api/admin/bot/settings', requireAuth, requireAdmin, admin.getBotSettings);
 app.post('/api/admin/bot/settings', requireAuth, requireAdmin, admin.updateBotSettings);
 

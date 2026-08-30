@@ -229,18 +229,57 @@ async function getBotSettings(req, res) {
 }
 
 /**
- * Update dynamic bot settings (Pause status, Quiet hours, Error snooze)
+ * Get public branding configuration (unauthenticated)
+ */
+async function getPublicBranding(req, res) {
+  try {
+    const config = await getOrLoadConfig();
+    const branding = {
+      resortName: config.resortName,
+      resortTagline: config.resortTagline,
+      logoUrl: config.logoUrl,
+      primaryColor: config.primaryColor,
+      brandAccent: config.brandAccent,
+      jettyName: config.jettyName,
+      jettyMapUrl: config.jettyMapUrl,
+      assemblyTime: config.assemblyTime,
+      departureTime: config.departureTime,
+      contactPhone: config.contactPhone
+    };
+    res.json({ success: true, branding });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/**
+ * Update dynamic bot settings & resort branding
  */
 async function updateBotSettings(req, res) {
   try {
     const current = await getOrLoadConfig();
-    const { isPaused, quietHoursStart, quietHoursEnd, snoozeHours } = req.body;
+    const { 
+      isPaused, quietHoursStart, quietHoursEnd, snoozeHours,
+      resortName, resortTagline, logoUrl, primaryColor, brandAccent,
+      jettyName, jettyMapUrl, assemblyTime, departureTime, contactPhone
+    } = req.body;
 
     const newConfig = {
+      ...current,
       isPaused: typeof isPaused === 'boolean' ? isPaused : current.isPaused,
       quietHoursStart: typeof quietHoursStart === 'number' ? quietHoursStart : current.quietHoursStart,
       quietHoursEnd: typeof quietHoursEnd === 'number' ? quietHoursEnd : current.quietHoursEnd,
-      snoozeHours: typeof snoozeHours === 'number' ? snoozeHours : current.snoozeHours
+      snoozeHours: typeof snoozeHours === 'number' ? snoozeHours : current.snoozeHours,
+      resortName: typeof resortName === 'string' && resortName.trim() ? resortName.trim() : current.resortName,
+      resortTagline: typeof resortTagline === 'string' ? resortTagline.trim() : current.resortTagline,
+      logoUrl: typeof logoUrl === 'string' ? logoUrl.trim() : current.logoUrl,
+      primaryColor: typeof primaryColor === 'string' && primaryColor.trim() ? primaryColor.trim() : current.primaryColor,
+      brandAccent: typeof brandAccent === 'string' && brandAccent.trim() ? brandAccent.trim() : current.brandAccent,
+      jettyName: typeof jettyName === 'string' && jettyName.trim() ? jettyName.trim() : current.jettyName,
+      jettyMapUrl: typeof jettyMapUrl === 'string' && jettyMapUrl.trim() ? jettyMapUrl.trim() : current.jettyMapUrl,
+      assemblyTime: typeof assemblyTime === 'string' ? assemblyTime.trim() : current.assemblyTime,
+      departureTime: typeof departureTime === 'string' ? departureTime.trim() : current.departureTime,
+      contactPhone: typeof contactPhone === 'string' ? contactPhone.trim() : current.contactPhone
     };
 
     activeConfig = newConfig;
@@ -250,7 +289,7 @@ async function updateBotSettings(req, res) {
       action: 'BOT_SETTINGS_UPDATED',
       username: req.user.username,
       role: req.user.role,
-      details: `Bot config updated: Paused=${newConfig.isPaused}, QuietHours=${newConfig.quietHoursStart}:00-${newConfig.quietHoursEnd}:00`,
+      details: `Bot config updated: Resort="${newConfig.resortName}", Paused=${newConfig.isPaused}, QuietHours=${newConfig.quietHoursStart}:00-${newConfig.quietHoursEnd}:00`,
       ip: req.ip
     });
 
@@ -281,7 +320,8 @@ async function testTelegramPing(req, res) {
       return res.status(400).json({ error: `Chat ID for ${channelLabel} is not configured in .env!` });
     }
 
-    const testText = `🔔 <b>Sheets Monitor Bot — Channel Test Ping</b>\n\n` +
+    const config = await getOrLoadConfig();
+    const testText = `🔔 <b>${config.resortName || 'Sheets Monitor Bot'} — Channel Test Ping</b>\n\n` +
       `✅ Sender: Admin Portal\n` +
       `👤 Initiated By: <b>${req.user.username}</b> (${req.user.role})\n` +
       `⏱ Sent At: <code>${new Date().toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' })} KL</code>\n` +
@@ -682,6 +722,7 @@ module.exports = {
   deleteUser,
   changePassword,
   getBotSettings,
+  getPublicBranding,
   updateBotSettings,
   testTelegramPing,
   getTelemetryStats,
