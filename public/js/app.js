@@ -1996,7 +1996,78 @@ async function loadBotSettingsUI() {
     if (startInp) startInp.value = cfg.quietHoursStart ?? 23;
     if (endInp) endInp.value = cfg.quietHoursEnd ?? 7;
     if (snoozeInp) snoozeInp.value = cfg.snoozeHours ?? 6;
+
+    const nameInp = document.getElementById('brand-resort-name');
+    const taglineInp = document.getElementById('brand-resort-tagline');
+    const logoInp = document.getElementById('brand-logo-url');
+    const primaryInp = document.getElementById('brand-primary-color');
+    const primaryPicker = document.getElementById('brand-primary-color-picker');
+    const accentInp = document.getElementById('brand-accent-color');
+    const accentPicker = document.getElementById('brand-accent-color-picker');
+    const jettyNameInp = document.getElementById('brand-jetty-name');
+    const jettyMapInp = document.getElementById('brand-jetty-map-url');
+    const assemblyInp = document.getElementById('brand-assembly-time');
+    const departureInp = document.getElementById('brand-departure-time');
+    const phoneInp = document.getElementById('brand-contact-phone');
+
+    if (nameInp) nameInp.value = cfg.resortName || '';
+    if (taglineInp) taglineInp.value = cfg.resortTagline || '';
+    if (logoInp) logoInp.value = cfg.logoUrl || '';
+    if (primaryInp) primaryInp.value = cfg.primaryColor || '#58a6ff';
+    if (primaryPicker) primaryPicker.value = cfg.primaryColor || '#58a6ff';
+    if (accentInp) accentInp.value = cfg.brandAccent || '#2ea043';
+    if (accentPicker) accentPicker.value = cfg.brandAccent || '#2ea043';
+    if (jettyNameInp) jettyNameInp.value = cfg.jettyName || '';
+    if (jettyMapInp) jettyMapInp.value = cfg.jettyMapUrl || '';
+    if (assemblyInp) assemblyInp.value = cfg.assemblyTime || '';
+    if (departureInp) departureInp.value = cfg.departureTime || '';
+    if (phoneInp) phoneInp.value = cfg.contactPhone || '';
+
+    applyBrandingToUI(cfg);
   } catch {}
+}
+
+async function handleBrandingSubmit(e) {
+  e.preventDefault();
+  const resortName = document.getElementById('brand-resort-name')?.value;
+  const resortTagline = document.getElementById('brand-resort-tagline')?.value;
+  const logoUrl = document.getElementById('brand-logo-url')?.value;
+  const primaryColor = document.getElementById('brand-primary-color')?.value;
+  const brandAccent = document.getElementById('brand-accent-color')?.value;
+  const jettyName = document.getElementById('brand-jetty-name')?.value;
+  const jettyMapUrl = document.getElementById('brand-jetty-map-url')?.value;
+  const assemblyTime = document.getElementById('brand-assembly-time')?.value;
+  const departureTime = document.getElementById('brand-departure-time')?.value;
+  const contactPhone = document.getElementById('brand-contact-phone')?.value;
+
+  try {
+    const res = await authFetch('/api/admin/bot/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        resortName,
+        resortTagline,
+        logoUrl,
+        primaryColor,
+        brandAccent,
+        jettyName,
+        jettyMapUrl,
+        assemblyTime,
+        departureTime,
+        contactPhone
+      })
+    });
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      showToast('✅ Resort branding settings updated!');
+      applyBrandingToUI(data.config);
+    } else {
+      showToast(`❌ ${data.error || 'Failed to save branding settings'}`);
+    }
+  } catch {
+    showToast('❌ Error updating branding settings.');
+  }
 }
 
 async function toggleBotPauseState() {
@@ -2189,7 +2260,76 @@ async function submitInternalNote() {
   }
 }
 
+// ── Dynamic Branding Functions ──
+let activeBrandingConfig = null;
+
+async function loadPublicBranding() {
+  try {
+    const res = await fetch('/api/public/branding');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.success && data.branding) {
+      activeBrandingConfig = data.branding;
+      applyBrandingToUI(data.branding);
+    }
+  } catch (err) {
+    console.warn('Failed to load public branding:', err);
+  }
+}
+
+function applyBrandingToUI(branding) {
+  if (!branding) return;
+
+  // 1. Page Title
+  if (branding.resortName) {
+    document.title = `${branding.resortName} — Dashboard & Admin Portal`;
+  }
+
+  // 2. Header Brand Title
+  const titleEl = document.getElementById('brand-title-el');
+  if (titleEl && branding.resortName) {
+    titleEl.textContent = branding.resortName;
+  }
+
+  // 3. Header Logo
+  const logoEl = document.getElementById('brand-logo-el');
+  if (logoEl && branding.logoUrl) {
+    if (branding.logoUrl.startsWith('/') || branding.logoUrl.startsWith('http')) {
+      logoEl.innerHTML = `<img src="${branding.logoUrl}" alt="Logo" style="height: 24px; vertical-align: middle;" onerror="this.outerHTML='📊'">`;
+    } else {
+      logoEl.textContent = branding.logoUrl;
+    }
+  }
+
+  // 4. Login card logo, title, and tagline
+  const loginLogoEl = document.getElementById('login-brand-logo');
+  if (loginLogoEl && branding.logoUrl) {
+    if (branding.logoUrl.startsWith('/') || branding.logoUrl.startsWith('http')) {
+      loginLogoEl.innerHTML = `<img src="${branding.logoUrl}" alt="Logo" style="height: 48px; vertical-align: middle; margin-bottom: 8px;" onerror="this.outerHTML='🏝️'">`;
+    } else {
+      loginLogoEl.textContent = branding.logoUrl;
+    }
+  }
+  const loginTitleEl = document.getElementById('login-brand-title');
+  if (loginTitleEl && branding.resortName) {
+    loginTitleEl.textContent = branding.resortName;
+  }
+  const loginTaglineEl = document.getElementById('login-brand-tagline');
+  if (loginTaglineEl && branding.resortTagline) {
+    loginTaglineEl.textContent = branding.resortTagline;
+  }
+
+  // 5. CSS variables for branding colors if custom
+  if (branding.primaryColor) {
+    document.documentElement.style.setProperty('--accent', branding.primaryColor);
+  }
+  if (branding.brandAccent) {
+    document.documentElement.style.setProperty('--green', branding.brandAccent);
+  }
+}
+
 // ── Initialization & Periodic Auth Checks ──────────────────────────────────
+loadPublicBranding();
 checkAuth();
 setInterval(() => {
   if (currentUser) loadData(true);
