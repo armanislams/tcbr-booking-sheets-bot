@@ -9,6 +9,7 @@ let currentUser = null;
 async function authFetch(url, options = {}) {
   const token = localStorage.getItem('sheets_auth_token');
   options.headers = options.headers || {};
+  options.credentials = options.credentials || 'same-origin';
   if (token) {
     options.headers['Authorization'] = `Bearer ${token}`;
   }

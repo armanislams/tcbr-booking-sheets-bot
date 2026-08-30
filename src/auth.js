@@ -291,6 +291,25 @@ function isTokenRevoked(token, jti) {
 }
 
 /**
+ * Parse HTTP Cookie header into an object key-value pair.
+ */
+function parseCookies(req) {
+  const list = {};
+  const cookieHeader = req.headers && req.headers.cookie;
+  if (!cookieHeader) return list;
+
+  cookieHeader.split(';').forEach(cookie => {
+    let [name, ...rest] = cookie.split('=');
+    name = name?.trim();
+    if (!name) return;
+    const value = rest.join('=').trim();
+    if (!value) return;
+    list[name] = decodeURIComponent(value);
+  });
+  return list;
+}
+
+/**
  * Express Middleware: Require Authentication
  */
 function requireAuth(req, res, next) {
@@ -302,6 +321,12 @@ function requireAuth(req, res, next) {
     token = authHeader.substring(7).trim();
   } else if (req.query && req.query.token) {
     token = req.query.token;
+  } else {
+    // 2. Fallback to HttpOnly cookie
+    const cookies = parseCookies(req);
+    if (cookies.sheets_auth_token) {
+      token = cookies.sheets_auth_token;
+    }
   }
 
   if (!token) {
@@ -333,6 +358,37 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+/**
+ * Set HttpOnly cookie for session token.
+ */
+function setAuthCookie(res, token) {
+  const isProd = process.env.NODE_ENV === 'production';
+  const cookieOptions = [
+    `sheets_auth_token=${encodeURIComponent(token)}`,
+    'HttpOnly',
+    'Path=/',
+    'Max-Age=2592000', // 30-day TTL
+    'SameSite=Lax',
+    ...(isProd ? ['Secure'] : [])
+  ].join('; ');
+  res.setHeader('Set-Cookie', cookieOptions);
+}
+
+/**
+ * Clear HttpOnly auth cookie on logout.
+ */
+function clearAuthCookie(res) {
+  const isProd = process.env.NODE_ENV === 'production';
+  const cookieOptions = [
+    'sheets_auth_token=',
+    'HttpOnly',
+    'Path=/',
+    'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+    'SameSite=Lax',
+    ...(isProd ? ['Secure'] : [])
+  ].join('; ');
+  res.setHeader('Set-Cookie', cookieOptions);
+}
 
 // ── In-Memory Rate Limiting ──────────────────────────────────────────────────
 const rateLimitMap = new Map();
@@ -392,6 +448,11 @@ module.exports = {
   revokeToken,
   requireAuth,
   requireAdmin,
+  setAuthCookie,
+  clearAuthCookie,
+  loginRateLimiter,
+  registerRateLimiter,
   validatePasswordStrength,
   JWT_SECRET
 };
+
