@@ -120,26 +120,37 @@ function parseDivingPax(str) {
   }
   s = s.replace(instructorRegex, ' ').trim();
 
-  // 4. Match all "NUMBER A" patterns (e.g. "7A", "1A")
+  // 4. Match all "NUMBER A" patterns (e.g. "7A", "1A", "2 A") and remove them
   const matchesA = Array.from(s.matchAll(/(\d+)\s*A(?=\s|$|[^A-Za-z])/gi));
-  if (matchesA.length > 0) {
-    for (const m of matchesA) {
-      adults += parseInt(m[1], 10);
-    }
-  } else if (/\bA\b/i.test(s)) {
+  for (const m of matchesA) {
+    adults += parseInt(m[1], 10);
+  }
+  s = s.replace(/(\d+)\s*A(?=\s|$|[^A-Za-z])/gi, ' ').trim();
+
+  if (/\bA\b/i.test(s)) {
     adults += 1;
-  } else {
-    const bareNum = s.match(/^(\d+)/);
-    if (bareNum) {
-      adults += parseInt(bareNum[1], 10);
-    }
+    s = s.replace(/\bA\b/i, ' ').trim();
   }
 
-  // 5. Also check for C/B patterns
-  const numC = s.match(/(\d+)\s*C\b/i);
-  const numB = s.match(/(\d+)\s*Baby\b/i);
-  if (numC) children += parseInt(numC[1], 10);
-  if (numB) babies += parseInt(numB[1], 10);
+  // 5. Match C/Child/Jr Diver/Junior patterns and remove them
+  const matchesC = Array.from(s.matchAll(/(\d+)\s*(?:C\b|child|kid|jr|junior)/gi));
+  for (const m of matchesC) {
+    children += parseInt(m[1], 10);
+  }
+  s = s.replace(/(\d+)\s*(?:C\b|child|kid|jr|junior)[a-z-]*/gi, ' ').trim();
+
+  // 6. Match Baby patterns and remove them
+  const matchesB = Array.from(s.matchAll(/(\d+)\s*Baby\b/gi));
+  for (const m of matchesB) {
+    babies += parseInt(m[1], 10);
+  }
+  s = s.replace(/(\d+)\s*Baby\b/gi, ' ').trim();
+
+  // 7. Check for remaining numbers in the text (e.g., bare numbers "2", "5 dives", or other diver titles)
+  const remainingNumbers = Array.from(s.matchAll(/(\d+)/g));
+  for (const m of remainingNumbers) {
+    adults += parseInt(m[1], 10);
+  }
 
   return { a: adults, c: children, b: babies };
 }
