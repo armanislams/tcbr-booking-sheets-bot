@@ -1,5 +1,6 @@
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID   = process.env.TELEGRAM_CHAT_ID;
+const { loadBotConfig } = require('./snapshot');
 
 const FETCH_TIMEOUT_MS = 15000;
 const MAX_RETRIES = 2;
@@ -215,9 +216,12 @@ async function sendTelegramAlert({ newRows = [], modifiedRows = [], error = null
     offlineHeader = `🔌 <b>Bot Back Online</b> (Offline for: <code>${escapeHtml(offlineInfo.duration)}</code>)\n`;
   }
 
+  const config = await loadBotConfig();
+  const resortName = config?.resortName || 'TCBR';
+
   parts.push(
     (offlineHeader ? offlineHeader + '\n' : '') +
-    `📊 <b>Sheets Monitor — ${escapeHtml(monthName)}</b>\n` +
+    `📊 <b>${escapeHtml(resortName)} — ${escapeHtml(monthName)}</b>\n` +
     `🕐 Checked at: ${timestamp}\n`
   );
 

@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { sendMessage, editMessageText } = require('./telegram');
 const { findHeaderRowIndex, parseDate, getMonthNameFromText } = require('./detector');
+const { loadBotConfig } = require('./snapshot');
 
 const KL_TIMEZONE = 'Asia/Kuala_Lumpur';
 
@@ -439,8 +440,10 @@ function buildReport(rows) {
 /**
  * Format a single day into a Telegram HTML message.
  */
-function formatDayMessage(report, day) {
+function formatDayMessage(report, day, config = null) {
   const lines = [];
+  const resortName = config?.resortName || 'TCBR';
+  const jettyName = config?.jettyName || "A'king Jetty";
 
   // Header only on first usage (we'll pass it from caller)
   const [year, monthStr, dayStr] = day.dateStr.split('-');
@@ -458,8 +461,8 @@ function formatDayMessage(report, day) {
     }
   }
   const headerText = `BOAT TRANSFER ${d}${suffix} ${monthName}`;
-  lines.push(` ${headerText} `);
-  lines.push('');
+  lines.push(` <b>${headerText}</b> `);
+  lines.push(`📍 <i>Jetty: ${escapeHtml(jettyName)}</i>`);
   lines.push('');
 
   // Check-outs
@@ -551,6 +554,7 @@ function escapeHtml(str) {
 async function sendWeeklyReport(rows, chatId, reason = 'scheduled', prevMessages = null, changedDates = []) {
   const report = buildReport(rows);
   const eventId = crypto.randomUUID();
+  const config = await loadBotConfig();
 
   // Accumulate previous messages and hashes to preserve history (even for dates outside the 10-day window)
   const dateMessages = { ...(prevMessages?.dateMessages || {}) };
@@ -570,7 +574,7 @@ async function sendWeeklyReport(rows, chatId, reason = 'scheduled', prevMessages
   const now = new Date();
   for (const day of report.days) {
     const dateStr = day.dateStr;
-    const dayText = formatDayMessage(report, day);
+    const dayText = formatDayMessage(report, day, config);
     const hash = crypto.createHash('md5').update(dayText).digest('hex');
 
     const prevMsgId = prevMessages?.dateMessages?.[dateStr];
@@ -623,7 +627,8 @@ async function sendWeeklyReport(rows, chatId, reason = 'scheduled', prevMessages
   }
 
   // Update or send header message
-  const headerText = `📋 <b>Customer Report: ${report.dateRange}</b>\n🕐 Generated: ${report.generatedAt}`;
+  const jettyTitle = escapeHtml(config?.jettyName || "A'king Jetty");
+  const headerText = `📋 <b>Customer Boat Report</b>\n📅 <b>Range:</b> ${report.dateRange}\n📍 <b>Jetty:</b> ${jettyTitle}\n🕐 Generated: ${report.generatedAt}`;
   if (headerId) {
     console.log(`   ✏️  Editing report header message: ${headerId}`);
     try {
