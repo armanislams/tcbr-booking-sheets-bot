@@ -1,6 +1,7 @@
 # Secrets — NEVER commit these
 .env
 service-account.json
+implementation_plan.md
 
 # Generated data (not needed on cloud — Render uses ephemeral storage)
 data/
@@ -16,4 +17,4 @@ node_modules/
 Thumbs.db
 
 # Temporary scratch files
-scratch/
+scratch/
