@@ -333,6 +333,58 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+
+// ── In-Memory Rate Limiting ──────────────────────────────────────────────────
+const rateLimitMap = new Map();
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, record] of rateLimitMap.entries()) {
+    if (now > record.resetTime) {
+      rateLimitMap.delete(key);
+    }
+  }
+}, 10 * 60 * 1000).unref?.();
+
+function createRateLimiter({ windowMs, maxRequests, message }) {
+  return function rateLimiter(req, res, next) {
+    const rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    const ip = rawIp.split(',')[0].trim();
+    const key = `${req.path}:${ip}`;
+    const now = Date.now();
+
+    let record = rateLimitMap.get(key);
+    if (!record || now > record.resetTime) {
+      record = { count: 1, resetTime: now + windowMs };
+      rateLimitMap.set(key, record);
+      return next();
+    }
+
+    record.count += 1;
+    if (record.count > maxRequests) {
+      const retryAfter = Math.ceil((record.resetTime - now) / 1000);
+      res.setHeader('Retry-After', retryAfter);
+      return res.status(429).json({
+        error: message || `Too many requests. Please try again in ${retryAfter} seconds.`
+      });
+    }
+
+    next();
+  };
+}
+
+const loginRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  maxRequests: 5,
+  message: 'Too many login attempts. Please wait 1 minute before trying again.'
+});
+
+const registerRateLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  maxRequests: 3,
+  message: 'Too many registration requests from this IP. Please try again later.'
+});
+
 module.exports = {
   initSeedAdmin,
   registerUser,

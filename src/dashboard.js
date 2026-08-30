@@ -3,7 +3,7 @@ const path    = require('path');
 const { loadHistory, loadSnapshot, getDbStatus, acknowledgeEvent, getTotalChecksCount } = require('./snapshot');
 const { parseDate } = require('./detector');
 const { parsePax, parseDivingPax, parseCoursePax } = require('./weeklyReport');
-const { initSeedAdmin, loginUser, registerUser, revokeToken, requireAuth, requireAdmin } = require('./auth');
+const { initSeedAdmin, loginUser, registerUser, revokeToken, requireAuth, requireAdmin, loginRateLimiter, registerRateLimiter } = require('./auth');
 const admin = require('./adminController');
 const { applyOverridesToRows } = require('./overrides');
 
@@ -27,7 +27,7 @@ let runCheckCallback = null;
 
 // ─── Authentication APIs (Public) ─────────────────────────────────────────────
 
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', registerRateLimiter, async (req, res) => {
   try {
     const { username, email, displayName, password } = req.body;
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
@@ -38,7 +38,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginRateLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
