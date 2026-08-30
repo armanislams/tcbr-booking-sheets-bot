@@ -535,7 +535,7 @@ async function updateBookingOverride(req, res) {
     }
 
     let finalKey = inputKey;
-    if (typeof rowIndex === 'number') {
+    if (typeof rowIndex === 'number' && !isNaN(rowIndex)) {
       finalKey = `ROW_${rowIndex}`;
     }
 
@@ -568,21 +568,24 @@ async function revertBookingOverride(req, res) {
     const { deleteOverride } = require('./overrides');
     const { bookingKey: inputKey, rowIndex } = req.body;
 
-    if (!inputKey && typeof rowIndex !== 'number') {
+    const parsedRowIndex = (typeof rowIndex === 'number' && !isNaN(rowIndex)) ? rowIndex : (typeof rowIndex === 'string' && !isNaN(parseInt(rowIndex, 10)) ? parseInt(rowIndex, 10) : undefined);
+
+    if (!inputKey && parsedRowIndex === undefined) {
       return res.status(400).json({ error: 'Booking key or row index is required to revert override.' });
     }
 
-    const removed = await deleteOverride(inputKey, rowIndex);
+    const removed = await deleteOverride(inputKey, parsedRowIndex);
 
     if (!removed) {
       return res.status(404).json({ error: 'No active override found for this booking.' });
     }
 
+    const logKey = inputKey || `ROW_${parsedRowIndex}`;
     await appendAuditLog({
       action: 'DASHBOARD_BOOKING_OVERRIDE_REVERTED',
       username: req.user.username,
       role: req.user.role,
-      details: `Reverted dashboard override for [${bookingKey}] back to original sheet values.`,
+      details: `Reverted dashboard override for [${logKey}] back to original sheet values.`,
       ip: req.ip
     });
 

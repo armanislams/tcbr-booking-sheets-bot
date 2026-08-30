@@ -100,35 +100,42 @@ async function deleteOverride(bookingKey, rowIndex) {
 
   let targetKey = null;
 
+  // Extract numeric row index if passed as ROW_X or string
+  let parsedRowIndex = rowIndex;
+  if ((parsedRowIndex === undefined || parsedRowIndex === null || isNaN(parsedRowIndex)) && bookingKey && typeof bookingKey === 'string') {
+    if (bookingKey.startsWith('ROW_')) {
+      const idx = parseInt(bookingKey.replace('ROW_', ''), 10);
+      if (!isNaN(idx)) parsedRowIndex = idx;
+    } else if (bookingKey.includes('_ROW_')) {
+      const parts = bookingKey.split('_ROW_');
+      const idx = parseInt(parts[1], 10);
+      if (!isNaN(idx)) parsedRowIndex = idx;
+    }
+  }
+
   // 1. Direct match by bookingKey
   if (bookingKey && overrides[bookingKey]) {
     targetKey = bookingKey;
   }
   // 2. Direct match by ROW_rowIndex
-  else if (rowIndex !== undefined && rowIndex !== null && overrides[`ROW_${rowIndex}`]) {
-    targetKey = `ROW_${rowIndex}`;
+  else if (parsedRowIndex !== undefined && parsedRowIndex !== null && !isNaN(parsedRowIndex) && overrides[`ROW_${parsedRowIndex}`]) {
+    targetKey = `ROW_${parsedRowIndex}`;
   }
-  // 3. Fallback search by bookingKey signature
-  else if (bookingKey) {
+  // 3. Fallback search across overrides map
+  else {
     for (const k in overrides) {
-      if (k === bookingKey || (overrides[k].overrideMeta && overrides[k].overrideMeta.bookingKey === bookingKey)) {
+      if (
+        k === bookingKey ||
+        (parsedRowIndex !== undefined && !isNaN(parsedRowIndex) && (k === `ROW_${parsedRowIndex}` || k.endsWith(`_ROW_${parsedRowIndex}`))) ||
+        (bookingKey && overrides[k]?.fields?.CODE === bookingKey)
+      ) {
         targetKey = k;
         break;
       }
     }
   }
 
-  // 4. Fallback search by rowIndex suffix
-  if (!targetKey && rowIndex !== undefined && rowIndex !== null) {
-    for (const k in overrides) {
-      if (k.endsWith(`_ROW_${rowIndex}`) || k === `ROW_${rowIndex}`) {
-        targetKey = k;
-        break;
-      }
-    }
-  }
-
-  // 5. If any key exists and bookingKey was provided (e.g. legacy CODE_ keys)
+  // 4. Fallback if single override exists
   if (!targetKey && bookingKey) {
     const keys = Object.keys(overrides);
     if (keys.length === 1) {
@@ -146,12 +153,13 @@ async function deleteOverride(bookingKey, rowIndex) {
   if (db) {
     try {
       const collection = db.collection('booking_overrides');
+      const deleteConditions = [{ bookingKey: targetKey }];
+      if (bookingKey) deleteConditions.push({ bookingKey });
+      if (parsedRowIndex !== undefined && !isNaN(parsedRowIndex)) {
+        deleteConditions.push({ bookingKey: `ROW_${parsedRowIndex}` });
+      }
       await collection.deleteMany({
-        $or: [
-          { bookingKey: targetKey },
-          { bookingKey },
-          { bookingKey: `ROW_${rowIndex}` }
-        ].filter(b => b.bookingKey)
+        $or: deleteConditions
       });
     } catch (err) {
       console.error('   ❌ MongoDB deleteOverride error:', err.message);
