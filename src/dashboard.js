@@ -24,10 +24,14 @@ const app = express();
 // Middleware to parse JSON bodies
 app.use(express.json());
 
-// Set Cache-Control header for API GET requests (60 seconds browser cache)
+// Set Cache-Control header for API GET requests (no-cache for booking data, private cache for others)
 app.use('/api', (req, res, next) => {
   if (req.method === 'GET') {
-    res.setHeader('Cache-Control', 'private, max-age=60, stale-while-revalidate=120');
+    if (req.path.includes('bookings') || req.path.includes('in-house')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else {
+      res.setHeader('Cache-Control', 'private, max-age=60, stale-while-revalidate=120');
+    }
   }
   next();
 });
