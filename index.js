@@ -187,14 +187,14 @@ async function runCheck(forceReminders = false, isManual = false, isRetry = fals
           pendingReportUpdate = true;
         }
         console.log(`   ℹ️ Skipping report update check during quiet hours (${klHour}:00 KL time).`);
-      } else if (isManual || pendingReportUpdate || datesShifted || reportContentChanged || (hasChanges && affectsReportWindow(newRows, modifiedRows))) {
+      } else if (isManual || forceReminders || pendingReportUpdate || datesShifted || reportContentChanged || (hasChanges && affectsReportWindow(newRows, modifiedRows))) {
         const nowMs = Date.now();
         const cooldownPassed = (nowMs - lastWeeklyReportTime > REPORT_COOLDOWN_MS);
 
-        if (isManual || pendingReportUpdate || datesShifted || reportContentChanged || cooldownPassed) {
+        if (isManual || forceReminders || pendingReportUpdate || datesShifted || reportContentChanged || cooldownPassed) {
           try {
             const changedDates = getChangedDates(newRows, modifiedRows);
-            console.log(`   📅 Updating report. Manual: ${isManual}, ContentChanged: ${reportContentChanged}, Dates shifted: ${datesShifted}, Pending: ${pendingReportUpdate}, Changed dates: ${changedDates.join(', ')}`);
+            console.log(`   📅 Updating report. Manual: ${isManual}, Forced: ${forceReminders}, ContentChanged: ${reportContentChanged}, Dates shifted: ${datesShifted}, Pending: ${pendingReportUpdate}, Changed dates: ${changedDates.join(', ')}`);
 
             const { messages } = await sendWeeklyReport(rows, REPORT_CHAT_ID, 'updated', lastReportMessages, changedDates);
             lastWeeklyReportTime = nowMs;
@@ -267,10 +267,10 @@ const cronExpression = (rawCron && !rawCron.includes('activate')) ? rawCron : '0
 console.log(`\n📆 Scheduler set: "${cronExpression}"`);
 cron.schedule(cronExpression, () => runCheck(false));
 
-// Daily 30-day reminders at 10:00 AM Kuala Lumpur time
-console.log('📆 Daily 10:00 AM KL reminder job scheduled');
-cron.schedule('0 10 * * *', async () => {
-  console.log('\n⏰ [10:00 AM KL] Running daily 30-day reminders job...');
+// Daily 30-day reminders & morning report update at 10:05 AM Kuala Lumpur time
+console.log('📆 Daily 10:05 AM KL reminder & morning report job scheduled');
+cron.schedule('5 10 * * *', async () => {
+  console.log('\n⏰ [10:05 AM KL] Running daily 30-day reminders & morning report job...');
   await runCheck(true);
 }, {
   timezone: 'Asia/Kuala_Lumpur'
@@ -290,10 +290,10 @@ cron.schedule('0 0 1 * *', async () => {
   timezone: 'Asia/Kuala_Lumpur'
 });
 
-// Weekly 10-day customer report: every Saturday at 10:00 AM KL time
+// Weekly 10-day customer report: every Saturday at 10:05 AM KL time
 if (REPORT_CHAT_ID) {
-  console.log('📆 Weekly 10-day report job scheduled (Saturday 10:00 AM KL)');
-  cron.schedule('0 10 * * 6', async () => {
+  console.log('📆 Weekly 10-day report job scheduled (Saturday 10:05 AM KL)');
+  cron.schedule('5 10 * * 6', async () => {
     console.log('\n📋 [Saturday Report] Generating 10-day customer report...');
     const { isQuiet, klHour } = isReportQuietHours();
     if (isQuiet) {
