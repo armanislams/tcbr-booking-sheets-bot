@@ -473,7 +473,6 @@ function formatDayMessage(report, day, config = null) {
   }
   const headerText = `BOAT TRANSFER ${d}${suffix} ${monthName}`;
   lines.push(` <b>${headerText}</b> `);
-  lines.push(`📍 <i>Jetty: ${escapeHtml(jettyName)}</i>`);
   lines.push('');
 
   // Check-outs
@@ -638,8 +637,7 @@ async function sendWeeklyReport(rows, chatId, reason = 'scheduled', prevMessages
   }
 
   // Update or send header message
-  const jettyTitle = escapeHtml(config?.jettyName || "A'king Jetty");
-  const headerText = `📋 <b>Customer Boat Report</b>\n📅 <b>Range:</b> ${report.dateRange}\n📍 <b>Jetty:</b> ${jettyTitle}\n🕐 Generated: ${report.generatedAt}`;
+  const headerText = `📋 <b>Customer Boat Report</b>\n📅 <b>Range:</b> ${report.dateRange}\n🕐 Generated: ${report.generatedAt}`;
   if (headerId) {
     console.log(`   ✏️  Editing report header message: ${headerId}`);
     try {
