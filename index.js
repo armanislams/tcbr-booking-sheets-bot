@@ -51,7 +51,8 @@ if (!REPORT_CHAT_ID) {
 }
 
 // ─── Run check job ──────────────────────────────────────────────────────────
-async function runCheck(forceReminders = false, isManual = false, isRetry = false) {
+async function runCheck(forceReminders = false, isManual = false, retryCount = 0) {
+  const currentRetry = typeof retryCount === 'number' ? retryCount : (retryCount ? 1 : 0);
   const botConfig = await getOrLoadConfig();
   if (botConfig.isPaused && !isManual) {
     console.log('   ⏸  Bot automated check loop is currently PAUSED by Admin. Skipping check.');
@@ -70,7 +71,8 @@ async function runCheck(forceReminders = false, isManual = false, isRetry = fals
   }
 
   const now = new Date();
-  console.log(`\n[${now.toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' })}] ⏱  Running check...${isRetry ? ' (Retry attempt)' : ''}`);
+  const retryText = currentRetry > 0 ? ` (Retry attempt ${currentRetry}/3)` : '';
+  console.log(`\n[${now.toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' })}] ⏱  Running check...${retryText}`);
   
   const eventId = crypto.randomUUID();
 
@@ -226,26 +228,25 @@ async function runCheck(forceReminders = false, isManual = false, isRetry = fals
     const isSameError = (errorMsg === lastErrorMessage);
     const hasSnoozePassed = (nowMs - lastErrorAlertTime > snoozeMs);
 
-    if (isRetry) {
+    if (currentRetry < 3) {
+      const nextRetry = currentRetry + 1;
+      console.log(`   ⚠️ Check failed (attempt ${currentRetry + 1}/4). Scheduling retry ${nextRetry}/3 in 1 minute...`);
+      retryTimeout = setTimeout(() => runCheck(forceReminders, isManual, nextRetry), 60000);
+    } else {
+      console.log('   ❌ Check failed after 3 retries (4 total attempts).');
       if (!isSameError || hasSnoozePassed) {
         try {
           await sendTelegramAlert({ error: errorMsg, checkedAt: now, eventId, chatId: CHAT_ID });
           lastErrorAlertTime = nowMs;
           lastErrorMessage = errorMsg;
-          console.log('   ✅ Telegram error alert sent (after retry failed).');
+          console.log('   ✅ Telegram error alert sent (after 3 retries failed).');
         } catch (tgErr) {
           console.error('   ❌ Failed to send Telegram error alert:', tgErr.message);
         }
       } else {
         console.log(`   ℹ️ Telegram error alert snoozed (Same error within ${snoozeHours}h).`);
       }
-    } else {
-      console.log('   ⚠️ Initial check failed. Telegram alert suppressed until retry fails.');
     }
-
-    // Schedule retry in 1 minute
-    console.log('   🕒 Scheduling retry check in 1 minute...');
-    retryTimeout = setTimeout(() => runCheck(forceReminders, isManual, true), 60000);
   } finally {
     isRunning = false;
     isBoot = false;
