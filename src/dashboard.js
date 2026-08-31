@@ -416,10 +416,14 @@ app.delete('/api/admin/bookings/override', requireAuth, requireAdmin, admin.reve
 app.post('/api/admin/reports/boat-transfer/preview', requireAuth, requireAdmin, admin.previewBoatTransferReport);
 app.post('/api/admin/reports/boat-transfer/send', requireAuth, requireAdmin, admin.sendBoatTransferReport);
 
-
+// Admin Telegram & Bot Commands Action Center API
+app.post('/api/admin/commands/run', requireAuth, requireAdmin, admin.runAdminCommand);
 
 async function startDashboard(runCheckFn) {
   runCheckCallback = runCheckFn;
+  if (admin.setRunCheckCallback) {
+    admin.setRunCheckCallback(runCheckFn);
+  }
   await initSeedAdmin(); // Initialize default admin account if needed
 
   const port = parseInt(process.env.PORT || process.env.DASHBOARD_PORT || '3000', 10);

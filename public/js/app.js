@@ -2150,6 +2150,72 @@ async function sendTelegramTestPing(channelType) {
   }
 }
 
+// ── Admin: Execute Telegram Bot Commands ──
+async function executeAdminCommand(commandKey, btnEl) {
+  const consoleEl = document.getElementById('adm-cmd-console');
+  let originalBtnText = '';
+
+  if (btnEl) {
+    originalBtnText = btnEl.innerHTML;
+    btnEl.disabled = true;
+    btnEl.innerHTML = '⏳ Executing...';
+  }
+
+  const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+  if (consoleEl) {
+    if (consoleEl.innerHTML.includes('[Console Ready]') || consoleEl.innerHTML.includes('[Console Cleared]')) {
+      consoleEl.innerHTML = '';
+    }
+    consoleEl.innerHTML += `<div style="color:#58a6ff; margin-bottom:4px;">[${timestamp}] 🚀 Executing command: /${commandKey}...</div>`;
+    consoleEl.scrollTop = consoleEl.scrollHeight;
+  }
+
+  showToast(`⏱ Executing /${commandKey}...`);
+
+  try {
+    const res = await authFetch('/api/admin/commands/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: commandKey })
+    });
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      const msg = data.message || 'Command executed successfully.';
+      showToast(`✅ /${commandKey}: Success!`);
+      if (consoleEl) {
+        consoleEl.innerHTML += `<div style="color:#3fb950; margin-bottom:6px;">[${timestamp}] ${msg}</div>`;
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      }
+    } else {
+      const err = data.error || 'Failed to execute command';
+      showToast(`❌ /${commandKey}: ${err}`);
+      if (consoleEl) {
+        consoleEl.innerHTML += `<div style="color:#f85149; margin-bottom:6px;">[${timestamp}] ❌ Error: ${err}</div>`;
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      }
+    }
+  } catch (err) {
+    showToast(`❌ Network error executing /${commandKey}`);
+    if (consoleEl) {
+      consoleEl.innerHTML += `<div style="color:#f85149; margin-bottom:6px;">[${timestamp}] ❌ Network Error: ${err.message || err}</div>`;
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+  } finally {
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.innerHTML = originalBtnText;
+    }
+  }
+}
+
+function clearAdminCommandConsole() {
+  const consoleEl = document.getElementById('adm-cmd-console');
+  if (consoleEl) {
+    consoleEl.innerHTML = '<span style="color: #484f58;">[Console Cleared] Select any command button above to execute and view output details...</span>';
+  }
+}
+
 // ── Admin: Data Export & Reset ──
 function downloadExport(type, format) {
   const token = localStorage.getItem('sheets_auth_token');

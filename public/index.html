@@ -280,7 +280,7 @@
     <div class="tab-bar" style="padding: 12px 24px 0; background: var(--bg-secondary); border-bottom: 1px solid var(--border); margin: 0;">
       <button class="tab-btn active" id="adm-tab-users" onclick="setAdminTab('users')">👥 Users & Approvals</button>
       <button class="tab-btn"        id="adm-tab-bot"   onclick="setAdminTab('bot')">⚙️ Bot & Quiet Hours</button>
-      <button class="tab-btn"        id="adm-tab-tg"    onclick="setAdminTab('tg')">📡 Telegram Test</button>
+      <button class="tab-btn"        id="adm-tab-tg"    onclick="setAdminTab('tg')">📡 Telegram & Commands</button>
       <button class="tab-btn"        id="adm-tab-data"  onclick="setAdminTab('data')">💾 Data & Exports</button>
       <button class="tab-btn"        id="adm-tab-telem" onclick="setAdminTab('telem')">📊 Diagnostics</button>
       <button class="tab-btn"        id="adm-tab-audit" onclick="setAdminTab('audit')">📜 Audit Trail</button>
@@ -454,28 +454,138 @@
         </form>
       </div>
 
-      <!-- TAB 3: TELEGRAM DIAGNOSTICS -->
+      <!-- TAB 3: TELEGRAM & BOT COMMAND ACTION CENTER -->
       <div id="adm-panel-tg" style="display: none;">
-        <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 12px;">Telegram Channel Connectivity Test</h4>
-        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px;">Send a test ping message to your configured Telegram channels to verify bot delivery.</p>
+        
+        <!-- Section 1: Telegram Bot Commands & Action Triggers -->
+        <div style="margin-bottom: 24px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <h4 style="font-size: 1rem; font-weight: 600; color: var(--text-primary); margin: 0;">⚡ Bot Commands & Manual Triggers</h4>
+            <span style="font-size: 0.78rem; color: var(--text-secondary);">Run any bot command directly from the admin dashboard</span>
+          </div>
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;">
-          <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm);">
-            <strong style="display: block; font-size: 0.9rem; margin-bottom: 4px;">Main Alert Channel</strong>
-            <span style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 14px;">Instant change notification alerts</span>
-            <button class="action-btn" onclick="sendTelegramTestPing('main')" style="width: 100%; justify-content: center;">📡 Test Main Channel</button>
-          </div>
-          <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm);">
-            <strong style="display: block; font-size: 0.9rem; margin-bottom: 4px;">Report Channel</strong>
-            <span style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 14px;">10-Day customer check-in reports</span>
-            <button class="action-btn" onclick="sendTelegramTestPing('report')" style="width: 100%; justify-content: center;">📡 Test Report Channel</button>
-          </div>
-          <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm);">
-            <strong style="display: block; font-size: 0.9rem; margin-bottom: 4px;">Reminder Channel</strong>
-            <span style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 14px;">30-Day payment reminder alerts</span>
-            <button class="action-btn" onclick="sendTelegramTestPing('reminder')" style="width: 100%; justify-content: center;">📡 Test Reminder Channel</button>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;">
+            
+            <!-- Command Card: /check -->
+            <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm); display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <strong style="font-size: 0.9rem; color: var(--text-primary);">Run Sheet Check</strong>
+                  <code style="font-size: 0.75rem; background: var(--bg-card); padding: 2px 6px; border-radius: 4px; color: var(--accent);">/check</code>
+                </div>
+                <p style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 12px;">Sync Google Sheets immediately & trigger change detection alert if new or modified rows are found.</p>
+              </div>
+              <button class="action-btn primary-action-btn" onclick="executeAdminCommand('check', this)" style="width: 100%; justify-content: center;">
+                ▶ Run Sheet Check
+              </button>
+            </div>
+
+            <!-- Command Card: /remind -->
+            <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm); display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <strong style="font-size: 0.9rem; color: var(--text-primary);">Run 30-Day Reminders</strong>
+                  <code style="font-size: 0.75rem; background: var(--bg-card); padding: 2px 6px; border-radius: 4px; color: var(--yellow);">/remind</code>
+                </div>
+                <p style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 12px;">Check 30-day payment reminders and dispatch alerts directly to the Telegram Reminder Channel.</p>
+              </div>
+              <button class="action-btn" onclick="executeAdminCommand('remind', this)" style="width: 100%; justify-content: center; background: rgba(210, 153, 34, 0.15); color: var(--yellow); border-color: rgba(210, 153, 34, 0.4);">
+                ⏰ Run Payment Reminders
+              </button>
+            </div>
+
+            <!-- Command Card: /report -->
+            <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm); display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <strong style="font-size: 0.9rem; color: var(--text-primary);">Generate 10-Day Report</strong>
+                  <code style="font-size: 0.75rem; background: var(--bg-card); padding: 2px 6px; border-radius: 4px; color: var(--green);">/report</code>
+                </div>
+                <p style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 12px;">Generate and publish/update the 10-day customer check-in & check-out report to Telegram Report Channel.</p>
+              </div>
+              <button class="action-btn" onclick="executeAdminCommand('report', this)" style="width: 100%; justify-content: center; background: rgba(46, 160, 67, 0.15); color: var(--green); border-color: rgba(46, 160, 67, 0.4);">
+                📋 Generate 10-Day Report
+              </button>
+            </div>
+
+            <!-- Command Card: /transfercheck -->
+            <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm); display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <strong style="font-size: 0.9rem; color: var(--text-primary);">Run Transfer Check</strong>
+                  <code style="font-size: 0.75rem; background: var(--bg-card); padding: 2px 6px; border-radius: 4px; color: var(--accent);">/transfercheck</code>
+                </div>
+                <p style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 12px;">Check sheet modifications and automatically update boat transfer & 10-day report window on Telegram.</p>
+              </div>
+              <button class="action-btn" onclick="executeAdminCommand('transfercheck', this)" style="width: 100%; justify-content: center;">
+                🚢 Run Transfer Check
+              </button>
+            </div>
+
+            <!-- Command Card: /summary -->
+            <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm); display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <strong style="font-size: 0.9rem; color: var(--text-primary);">Bookings Summary</strong>
+                  <code style="font-size: 0.75rem; background: var(--bg-card); padding: 2px 6px; border-radius: 4px; color: var(--text-secondary);">/summary</code>
+                </div>
+                <p style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 12px;">Retrieve quick summary snapshot count of active bookings for the current month.</p>
+              </div>
+              <button class="action-btn" onclick="executeAdminCommand('summary', this)" style="width: 100%; justify-content: center;">
+                📊 Fetch Summary
+              </button>
+            </div>
+
+            <!-- Command Card: /status -->
+            <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm); display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <strong style="font-size: 0.9rem; color: var(--text-primary);">System Status Check</strong>
+                  <code style="font-size: 0.75rem; background: var(--bg-card); padding: 2px 6px; border-radius: 4px; color: var(--text-secondary);">/status</code>
+                </div>
+                <p style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 12px;">Query real-time database connection, check counters, and system health status.</p>
+              </div>
+              <button class="action-btn" onclick="executeAdminCommand('status', this)" style="width: 100%; justify-content: center;">
+                🔍 Check System Status
+              </button>
+            </div>
+
           </div>
         </div>
+
+        <!-- Command Execution Log / Console Output Box -->
+        <div style="margin-bottom: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <strong style="font-size: 0.85rem; color: var(--text-secondary);">Command Execution Output Console</strong>
+            <button class="action-btn" onclick="clearAdminCommandConsole()" style="padding: 2px 8px; font-size: 0.72rem;">Clear Console</button>
+          </div>
+          <div id="adm-cmd-console" style="background: #090d13; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; font-family: monospace, Consolas, sans-serif; font-size: 0.8rem; min-height: 90px; max-height: 200px; overflow-y: auto; color: #8b949e; line-height: 1.5;">
+            <span style="color: #484f58;">[Console Ready] Select any command button above to execute and view output details...</span>
+          </div>
+        </div>
+
+        <!-- Section 2: Telegram Channel Connectivity Tests -->
+        <div>
+          <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 12px;">📡 Telegram Channel Connectivity Tests</h4>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;">
+            <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 14px; border-radius: var(--radius-sm);">
+              <strong style="display: block; font-size: 0.88rem; margin-bottom: 4px;">Main Alert Channel</strong>
+              <span style="font-size: 0.78rem; color: var(--text-secondary); display: block; margin-bottom: 12px;">Instant change notification alerts</span>
+              <button class="action-btn" onclick="sendTelegramTestPing('main')" style="width: 100%; justify-content: center;">📡 Test Main Channel</button>
+            </div>
+            <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 14px; border-radius: var(--radius-sm);">
+              <strong style="display: block; font-size: 0.88rem; margin-bottom: 4px;">Report Channel</strong>
+              <span style="font-size: 0.78rem; color: var(--text-secondary); display: block; margin-bottom: 12px;">10-Day customer check-in reports</span>
+              <button class="action-btn" onclick="sendTelegramTestPing('report')" style="width: 100%; justify-content: center;">📡 Test Report Channel</button>
+            </div>
+            <div style="background: var(--bg-primary); border: 1px solid var(--border); padding: 14px; border-radius: var(--radius-sm);">
+              <strong style="display: block; font-size: 0.88rem; margin-bottom: 4px;">Reminder Channel</strong>
+              <span style="font-size: 0.78rem; color: var(--text-secondary); display: block; margin-bottom: 12px;">30-Day payment reminder alerts</span>
+              <button class="action-btn" onclick="sendTelegramTestPing('reminder')" style="width: 100%; justify-content: center;">📡 Test Reminder Channel</button>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <!-- TAB 4: DATA EXPORTS & BACKUPS -->

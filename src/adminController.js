@@ -717,6 +717,176 @@ async function sendBoatTransferReport(req, res) {
   }
 }
 
+let runCheckCallbackRef = null;
+
+function setRunCheckCallback(fn) {
+  runCheckCallbackRef = fn;
+}
+
+/**
+ * Execute administrative bot command (Dashboard command center)
+ */
+async function runAdminCommand(req, res) {
+  try {
+    const { command } = req.body;
+    if (!command) {
+      return res.status(400).json({ error: 'Command parameter is required.' });
+    }
+
+    const commandKey = command.toString().trim().toLowerCase().replace(/^\//, '');
+    const username = req.user?.username || 'admin';
+    const role = req.user?.role || 'admin';
+
+    let resultMessage = '';
+    let extraData = null;
+
+    if (commandKey === 'check') {
+      if (!runCheckCallbackRef) {
+        return res.status(500).json({ error: 'Check trigger callback not registered on server.' });
+      }
+      await runCheckCallbackRef(false, true);
+      resultMessage = '✅ Sheet check completed successfully! Google Sheet synced and change detection run.';
+    } else if (commandKey === 'remind') {
+      if (!runCheckCallbackRef) {
+        return res.status(500).json({ error: 'Check trigger callback not registered on server.' });
+      }
+      await runCheckCallbackRef(true, true);
+      resultMessage = '✅ Reminders check completed successfully! 30-day payment alerts checked and delivered to Telegram.';
+    } else if (commandKey === 'report') {
+      const targetChat = process.env.TELEGRAM_REPORT_CHAT_ID || process.env.TELEGRAM_CHAT_ID;
+      if (!targetChat) {
+        return res.status(400).json({ error: 'TELEGRAM_REPORT_CHAT_ID is not configured in environment!' });
+      }
+      const { sendWeeklyReport } = require('./weeklyReport');
+      const rows = await fetchAndEnrichSheetData();
+      const previousSnapshot = await loadSnapshot();
+      const prevMessages = previousSnapshot?.lastReportMessages || null;
+
+      const { messages } = await sendWeeklyReport(rows, targetChat, 'manual', prevMessages);
+
+      const currentMonthRows = Object.values(previousSnapshot?.monthMap || {});
+      await saveSnapshot(
+        rows,
+        currentMonthRows,
+        previousSnapshot?.sentReminders || {},
+        previousSnapshot?.lastWeeklyReportTime || null,
+        messages
+      );
+
+      const count = messages.dateMessages ? Object.keys(messages.dateMessages).length : 0;
+      resultMessage = `✅ 10-Day Customer Report generated and sent to Telegram channel! (${count} daily message(s) updated)`;
+      extraData = { messagesCount: count, channelId: targetChat };
+    } else if (commandKey === 'transfercheck' || commandKey === 'transfer-check') {
+      const targetChat = process.env.TELEGRAM_REPORT_CHAT_ID || process.env.TELEGRAM_CHAT_ID;
+      const rows = await fetchAndEnrichSheetData();
+      const previousSnapshot = await loadSnapshot();
+      const { affectsReportWindow } = require('./weeklyReport');
+      const { findHeaderRowIndex } = require('./detector');
+
+      const headerIndex = findHeaderRowIndex(rows);
+      const currentMap = {};
+      for (let i = headerIndex + 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.slice(0, -1).every(cell => !cell || cell.toString().trim() === '')) continue;
+        const firstCell = (row[0] || '').toString().trim();
+        const key = firstCell ? `${firstCell}__row${i}` : `row${i}`;
+        currentMap[key] = { row, rowIndex: i };
+      }
+
+      const prevMap = previousSnapshot?.monthMap || {};
+      const newKeys = Object.keys(currentMap).filter(k => !prevMap[k]);
+      const modifiedKeys = Object.keys(currentMap).filter(k => {
+        if (!prevMap[k]) return false;
+        const prevRow = prevMap[k].row;
+        const currRow = currentMap[k].row;
+        const maxLen = Math.max(prevRow.length, currRow.length);
+        for (let col = 0; col < maxLen; col++) {
+          const before = (prevRow[col] || '').toString().trim();
+          const after = (currRow[col] || '').toString().trim();
+          if (before !== after) return true;
+        }
+        return false;
+      });
+
+      const hasChanges = newKeys.length > 0 || modifiedKeys.length > 0;
+      if (!hasChanges) {
+        resultMessage = 'ℹ️ No changes detected in booking sheet. All data is up to date.';
+      } else {
+        const newRows = newKeys.map(k => ({
+          key: k,
+          row: currentMap[k].row,
+          rowIndex: currentMap[k].rowIndex,
+          headers: rows[headerIndex] || [],
+        }));
+        const modifiedRows = modifiedKeys.map(k => ({
+          key: k,
+          row: currentMap[k].row,
+          rowIndex: currentMap[k].rowIndex,
+          headers: rows[headerIndex] || [],
+          changes: [],
+        }));
+
+        if (affectsReportWindow(newRows, modifiedRows)) {
+          const { sendWeeklyReport } = require('./weeklyReport');
+          const previousMessages = previousSnapshot?.lastReportMessages || null;
+          const { messages } = await sendWeeklyReport(rows, targetChat, 'manual', previousMessages);
+
+          const currentMonthRows = Object.values(previousSnapshot?.monthMap || {});
+          await saveSnapshot(
+            rows,
+            currentMonthRows,
+            previousSnapshot?.sentReminders || {},
+            previousSnapshot?.lastWeeklyReportTime || null,
+            messages
+          );
+
+          resultMessage = '✅ Boat Transfer Report updated! 10-day report has been checked and updated for changed dates.';
+        } else {
+          resultMessage = `ℹ️ Changes detected (New: ${newKeys.length}, Modified: ${modifiedKeys.length}), but outside the 10-day report window.`;
+        }
+      }
+    } else if (commandKey === 'summary') {
+      const snapshot = await loadSnapshot();
+      const monthMap = snapshot?.monthMap || {};
+      const bookingsCount = Object.keys(monthMap).length;
+      resultMessage = `📊 Current Month Snapshot: ${bookingsCount} active booking(s) currently indexed.`;
+      extraData = { bookingsCount };
+    } else if (commandKey === 'status') {
+      const history = await loadHistory();
+      const totalChecks = await getTotalChecksCount();
+      const dbStat = getDbStatus();
+      const lastCheck = history[0]?.checkedAt
+        ? new Date(history[0].checkedAt).toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' })
+        : 'Never';
+
+      resultMessage = `🟢 Bot Status: Running | DB: ${dbStat.connected ? 'Connected' : 'Disconnected'} (${dbStat.type}) | Last Check: ${lastCheck} | Total Checks: ${totalChecks}`;
+      extraData = { dbStatus: dbStat, lastCheck, totalChecks };
+    } else {
+      return res.status(400).json({ error: `Unknown command: "${commandKey}"` });
+    }
+
+    // Append Audit Log for every admin command execution
+    await appendAuditLog({
+      action: 'ADMIN_COMMAND_EXECUTED',
+      username,
+      role,
+      details: `Executed command "/${commandKey}" from Admin Dashboard Command Center`,
+      ip: req.ip
+    });
+
+    res.json({
+      success: true,
+      command: commandKey,
+      message: resultMessage,
+      timestamp: new Date().toISOString(),
+      data: extraData
+    });
+  } catch (err) {
+    console.error('   ❌ Error executing admin command:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+
 module.exports = {
   getOrLoadConfig,
   getUsers,
@@ -737,7 +907,10 @@ module.exports = {
   updateBookingOverride,
   revertBookingOverride,
   previewBoatTransferReport,
-  sendBoatTransferReport
+  sendBoatTransferReport,
+  setRunCheckCallback,
+  runAdminCommand
 };
+
 
 
