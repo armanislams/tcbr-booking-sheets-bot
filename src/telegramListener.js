@@ -169,8 +169,13 @@ async function handleTelegramUpdate(update) {
         await sendDirectMessage(chatId, '⏱ <b>Triggering manual reminders check...</b>');
         if (runCheckCallback) {
           try {
-            await runCheckCallback(true, true);
-            await sendDirectMessage(chatId, '✅ <b>Reminders check completed successfully!</b> Check reminder channel for alerts.');
+            const res = await runCheckCallback(true, true);
+            const count = res?.sentCount || 0;
+            if (count > 0) {
+              await sendDirectMessage(chatId, `✅ <b>Reminders check completed!</b> Sent ${count} 30-day reminder(s) to reminder channel.`);
+            } else {
+              await sendDirectMessage(chatId, '✅ <b>Reminders check completed!</b> No bookings require a 30-day reminder today.');
+            }
           } catch (err) {
             await sendDirectMessage(chatId, `❌ <b>Error during check:</b> ${err.message}`);
           }

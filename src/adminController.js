@@ -750,8 +750,13 @@ async function runAdminCommand(req, res) {
       if (!runCheckCallbackRef) {
         return res.status(500).json({ error: 'Check trigger callback not registered on server.' });
       }
-      await runCheckCallbackRef(true, true);
-      resultMessage = '✅ Reminders check completed successfully! 30-day payment alerts checked and delivered to Telegram.';
+      const resRemind = await runCheckCallbackRef(true, true);
+      const count = resRemind?.sentCount || 0;
+      if (count > 0) {
+        resultMessage = `✅ Reminders check completed! Sent ${count} 30-day payment alert(s) to Telegram.`;
+      } else {
+        resultMessage = '✅ Reminders check completed! No bookings require a 30-day reminder today.';
+      }
     } else if (commandKey === 'report') {
       const targetChat = process.env.TELEGRAM_REPORT_CHAT_ID || process.env.TELEGRAM_CHAT_ID;
       if (!targetChat) {
