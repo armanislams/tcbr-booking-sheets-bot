@@ -122,7 +122,7 @@ async function checkAndSend30DayReminders(rows, previousSnapshot) {
 
   if (remindersToSend.length === 0) {
     console.log('   ℹ️ No bookings require a 30-day reminder today.');
-    return { sentReminders };
+    return { sentReminders, sentCount: 0 };
   }
 
   console.log(`   🔔 Found ${remindersToSend.length} booking(s) for 30-day reminder. Sending to channel...`);
@@ -189,7 +189,7 @@ async function checkAndSend30DayReminders(rows, previousSnapshot) {
 
   if (!sendOk) {
     console.warn('   ⚠️  Reminder messages could not be sent. They will be retried on the next scheduled run.');
-    return { sentReminders: previousSnapshot?.sentReminders || {} };
+    return { sentReminders: previousSnapshot?.sentReminders || {}, sentCount: 0 };
   }
 
   // Mark reminders as sent only after successful delivery
@@ -198,7 +198,7 @@ async function checkAndSend30DayReminders(rows, previousSnapshot) {
   }
 
   console.log(`   ✅ 30-day reminders sent to channel.`);
-  return { sentReminders };
+  return { sentReminders, sentCount: remindersToSend.length };
 }
 
 module.exports = { checkAndSend30DayReminders, getKualaLumpurDaysDifference, isNonZeroBalance };

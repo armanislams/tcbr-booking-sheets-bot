@@ -86,6 +86,7 @@ async function runCheck(forceReminders = false, isManual = false, retryCount = 0
     const isInitialRun = !previousSnapshot;
 
     let sentReminders = previousSnapshot?.sentReminders || {};
+    let sentCount = 0;
     if (previousSnapshot?.lastWeeklyReportTime) {
       lastWeeklyReportTime = previousSnapshot.lastWeeklyReportTime;
     }
@@ -95,6 +96,7 @@ async function runCheck(forceReminders = false, isManual = false, retryCount = 0
     if (forceReminders) {
       const remindersResult = await checkAndSend30DayReminders(rows, previousSnapshot);
       sentReminders = remindersResult.sentReminders;
+      sentCount = remindersResult.sentCount || 0;
     }
 
     let offlineInfo = null;
@@ -216,6 +218,8 @@ async function runCheck(forceReminders = false, isManual = false, retryCount = 0
     // Reset error alerts state on success
     lastErrorAlertTime = 0;
     lastErrorMessage = '';
+
+    return { sentCount };
 
   } catch (err) {
     console.error('   ❌ Error during check:', err.message);
